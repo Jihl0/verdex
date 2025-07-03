@@ -88,7 +88,7 @@ export default function SignInPage() {
       
       if (result) {
         console.log('Sign in successful', result.user);
-        router.push('/');
+        router.push('/dashboard');
       }
     } catch (err) {
       console.error('Sign in failed:', err);
@@ -129,7 +129,7 @@ export default function SignInPage() {
           </h2>
           <p className="mt-2 text-sm text-gray-600">
             Don't have an account?{' '}
-            <a href="/signup" className="font-medium text-red-700 hover:text-red-400">
+            <a href="/sign-up" className="font-medium text-red-700 hover:text-red-400">
               Sign up
             </a>
           </p>
