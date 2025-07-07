@@ -1,130 +1,266 @@
 "use client";
 
-import Sidebar from '@/components/Sidebar';
-import { useAuthState } from 'react-firebase-hooks/auth';
-import { auth } from '@/app/firebase/config';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from "react";
+import Sidebar from "@/components/Sidebar";
+import {
+  getDashboardStats,
+  getRecentDistributions,
+  getRecentHarvests,
+} from "@/lib/db";
+import { useAuth } from "@/context/AuthContext";
+import AuthGuard from "@/utils/AuthGuard";
 
 export default function Dashboard() {
-  const [user, loading] = useAuthState(auth);
-  const router = useRouter();
+  const { currentUser } = useAuth();
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [recentDistributions, setRecentDistributions] = useState([]);
+  const [recentHarvests, setRecentHarvests] = useState([]);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/sign-in');
-    }
-  }, [user, loading, router]);
+    const loadData = async () => {
+      try {
+        const statsData = await getDashboardStats();
+        setStats(statsData);
+
+        // Load recent distributions (last 5)
+        const distData = await getRecentDistributions(5);
+        setRecentDistributions(distData);
+
+        // Load recent harvests (last 5)
+        const harvestData = await getRecentHarvests(5);
+        setRecentHarvests(harvestData);
+      } catch (error) {
+        console.error("Error loading dashboard data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const handleSidebarToggle = (collapsed) => {
+    setSidebarCollapsed(collapsed);
+  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-500"></div>
+      <div className="flex h-screen">
+        <Sidebar onToggle={handleSidebarToggle} />
+        <div
+          className={`flex-1 ${
+            sidebarCollapsed ? "ml-20" : "ml-64"
+          } flex items-center justify-center transition-all duration-300 ease-in-out`}
+        >
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-green-500"></div>
+        </div>
       </div>
     );
   }
 
-  if (!user) {
-    return null; // Redirecting, so no need to render anything
-  }
-
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-      
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <header className="flex items-center justify-between h-16 px-4 border-b border-gray-200 bg-white">
-          <h2 className="text-lg font-medium text-gray-900">Dashboard</h2>
-          <div className="flex items-center space-x-4">
-            <button className="p-1 text-gray-400 rounded-full hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-              <span className="sr-only">Notifications</span>
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
-            <div className="relative">
-              <button className="flex items-center text-sm text-gray-700 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                <span className="sr-only">Open user menu</span>
-              </button>
-            </div>
+    <AuthGuard>
+      <div className="flex h-screen bg-gray-100">
+        <Sidebar onToggle={handleSidebarToggle} />
+
+        <div
+          className={`flex-1 overflow-y-auto transition-all duration-300 ease-in-out ${
+            sidebarCollapsed ? "ml-20" : "ml-64"
+          } p-8`}
+        >
+          <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
+
+          {/* Welcome Message */}
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <h2 className="text-xl font-semibold text-gray-700">
+              Welcome back, {currentUser?.email || "User"}!
+            </h2>
+            <p className="text-gray-600 mt-2">
+              Here's what's happening with your seed inventory today.
+            </p>
           </div>
-        </header>
 
-        <main className="flex-1 overflow-y-auto p-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="bg-white shadow rounded-lg p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Welcome back, {user.email}</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Stats Cards */}
-                <div className="bg-red-50 rounded-lg p-4">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-full bg-red-100 text-red-600">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-500">Total Students</p>
-                      <p className="text-2xl font-semibold text-gray-900">1,234</p>
-                    </div>
-                  </div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {/* Total Seeds */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4">
+                  <svg
+                    className="w-8 h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+                    ></path>
+                  </svg>
                 </div>
-
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-full bg-blue-100 text-blue-600">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-500">Courses</p>
-                      <p className="text-2xl font-semibold text-gray-900">24</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-green-50 rounded-lg p-4">
-                  <div className="flex items-center">
-                    <div className="p-3 rounded-full bg-green-100 text-green-600">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-500">Completed</p>
-                      <p className="text-2xl font-semibold text-gray-900">89%</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Recent Activity */}
-              <div className="mt-8">
-                <h4 className="text-md font-medium text-gray-900 mb-4">Recent Activity</h4>
-                <div className="space-y-4">
-                  {[1, 2, 3, 4].map((item) => (
-                    <div key={item} className="flex items-start pb-4 border-b border-gray-100 last:border-0">
-                      <div className="flex-shrink-0 mt-1">
-                        <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                          </svg>
-                        </div>
-                      </div>
-                      <div className="ml-3">
-                        <p className="text-sm font-medium text-gray-900">New announcement posted</p>
-                        <p className="text-sm text-gray-500">2 hours ago</p>
-                      </div>
-                    </div>
-                  ))}
+                <div>
+                  <p className="text-sm font-medium text-gray-500">
+                    Total Seeds
+                  </p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    {stats?.totalSeeds?.toFixed(2) || "0"} kg
+                  </p>
                 </div>
               </div>
             </div>
+
+            {/* Most Abundant Crop */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
+                  <svg
+                    className="w-8 h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                    ></path>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">
+                    Most Abundant Crop
+                  </p>
+                  <p className="text-2xl font-bold text-gray-800">
+                    {stats?.mostAbundantCrop || "N/A"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Harvest */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <div className="flex items-center">
+                <div className="p-3 rounded-full bg-yellow-100 text-yellow-600 mr-4">
+                  <svg
+                    className="w-8 h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-500">
+                    Recent Harvest
+                  </p>
+                  <p className="text-xl font-bold text-gray-800">
+                    {stats?.recentHarvest
+                      ? `${stats.recentHarvest.crop} - ${stats.recentHarvest.variety}`
+                      : "N/A"}
+                  </p>
+                  {stats?.recentHarvest && (
+                    <p className="text-sm text-gray-500">
+                      Batch: {stats.recentHarvest.seedBatchId}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </main>
+
+          {/* Recent Activity Sections */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Recent Harvests */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                Recent Harvests
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Batch ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Crop
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quantity (kg)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {recentHarvests.map((harvest) => (
+                      <tr key={harvest.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {harvest.seedBatchId}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {harvest.crop}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {harvest.balance.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Recent Distributions */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                Recent Distributions
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Batch ID
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Recipient
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Quantity (kg)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {recentDistributions.map((dist) => (
+                      <tr key={dist.id}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {dist.seedBatchId}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {dist.recipientName}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {dist.quantity.toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </AuthGuard>
   );
 }
