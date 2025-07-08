@@ -6,9 +6,26 @@ import {
   getDashboardStats,
   getRecentDistributions,
   getRecentHarvests,
+  getCropHarvestStats,
+  getHarvestTrends,
+  getDistributionTrends,
 } from "@/lib/db";
 import { useAuth } from "@/context/AuthContext";
 import AuthGuard from "@/utils/AuthGuard";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from "recharts";
+import { CROP_VARIETIES } from "@/constants/variety";
 
 export default function Dashboard() {
   const { currentUser } = useAuth();
@@ -17,6 +34,10 @@ export default function Dashboard() {
   const [recentDistributions, setRecentDistributions] = useState([]);
   const [recentHarvests, setRecentHarvests] = useState([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [cropStats, setCropStats] = useState([]);
+  const [selectedCrop, setSelectedCrop] = useState("All Crops");
+  const [harvestTrends, setHarvestTrends] = useState([]);
+  const [distributionTrends, setDistributionTrends] = useState([]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -24,13 +45,20 @@ export default function Dashboard() {
         const statsData = await getDashboardStats();
         setStats(statsData);
 
-        // Load recent distributions (last 5)
         const distData = await getRecentDistributions(5);
         setRecentDistributions(distData);
 
-        // Load recent harvests (last 5)
         const harvestData = await getRecentHarvests(5);
         setRecentHarvests(harvestData);
+
+        const cropData = await getCropHarvestStats();
+        setCropStats(cropData);
+
+        const trendsData = await getHarvestTrends();
+        setHarvestTrends(trendsData);
+
+        const distTrends = await getDistributionTrends();
+        setDistributionTrends(distTrends);
       } catch (error) {
         console.error("Error loading dashboard data:", error);
       } finally {
@@ -40,6 +68,11 @@ export default function Dashboard() {
 
     loadData();
   }, []);
+
+  const filteredHarvests =
+    selectedCrop === "All Crops"
+      ? recentHarvests
+      : recentHarvests.filter((harvest) => harvest.crop === selectedCrop);
 
   const handleSidebarToggle = (collapsed) => {
     setSidebarCollapsed(collapsed);
@@ -72,22 +105,128 @@ export default function Dashboard() {
         >
           <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
-          {/* Welcome Message */}
-          <div className="bg-white p-6 rounded-lg shadow mb-6">
-            <h2 className="text-xl font-semibold text-gray-700">
-              Welcome back, {currentUser?.email || "User"}!
-            </h2>
-            <p className="text-gray-600 mt-2">
-              Here's what's happening with your seed inventory today.
-            </p>
+          <div className="flex flex-col md:flex-row gap-6 mb-6">
+            {/* Welcome Message - now takes half width on medium+ screens */}
+            <div className="bg-white p-6 rounded-lg shadow md:w-1/2">
+              <h2 className="text-xl font-semibold text-gray-700">
+                Welcome back, {currentUser?.email || "User"}!
+              </h2>
+              <div className="text-gray-600 mt-2 space-y-2">
+                <p>
+                  This is the current development version of our seed inventory
+                  system, specifically tracking these legume varieties:
+                </p>
+
+                <div className="ml-4">
+                  <p className="font-medium">Soybeans:</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4">
+                    {CROP_VARIETIES.Soybean.map((variety) => (
+                      <span key={variety} className="text-sm">
+                        • {variety}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className="font-medium mt-2">Mungbeans:</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4">
+                    {CROP_VARIETIES.Mungbean.map((variety) => (
+                      <span key={variety} className="text-sm">
+                        • {variety}
+                      </span>
+                    ))}
+                  </div>
+
+                  <p className="font-medium mt-2">Peanuts:</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4">
+                    {CROP_VARIETIES.Peanut.map((variety) => (
+                      <span key={variety} className="text-sm">
+                        • {variety}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-sm italic">
+                  Note: The system currently supports only these registered
+                  legume varieties. Additional crops and varieties will be added
+                  in future updates.
+                </p>
+              </div>
+            </div>
+
+            {/* Crop Distribution Pie Chart - now takes half width on medium+ screens */}
+            <div className="bg-white p-6 rounded-lg shadow md:w-1/2 text-gray-800">
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                Crop Distribution
+              </h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={cropStats}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="total"
+                      nameKey="crop"
+                      label={({ name, percent }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                    >
+                      {cropStats.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            [
+                              "#8D1436", // Soybean - maroon
+                              "#00563F", // Mungbean - green
+                              "#FFB61C", // Peanut - gold
+                              "#9C27B0", // Other - purple
+                              "#FF5722", // Other - deep orange
+                            ][index % 5]
+                          }
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value) => [`${value} kg`, "Quantity"]}
+                    />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-8 grid grid-cols-2 md:grid-cols-3 gap-2">
+                {cropStats.map((crop, index) => (
+                  <div key={crop.crop} className="flex items-center">
+                    <div
+                      className="w-3 h-3 rounded-full mr-2"
+                      style={{
+                        backgroundColor: [
+                          "#8D1436",
+                          "#00563F",
+                          "#FFB61C",
+                          "#9C27B0",
+                          "#FF5722",
+                        ][index % 5],
+                      }}
+                    ></div>
+                    <span className="text-sm">
+                      {crop.crop}: {crop.total.toFixed(2)} kg
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {/* Total Seeds */}
-            <div className="bg-white p-6 rounded-lg shadow">
+            {/* Total Seeds - Maroon */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-[#8D1436]">
               <div className="flex items-center">
-                <div className="p-3 rounded-full bg-green-100 text-green-600 mr-4">
+                <div className="p-3 rounded-full bg-[#f8e8eb] text-[#8D1436] mr-4">
                   <svg
                     className="w-8 h-8"
                     fill="none"
@@ -113,10 +252,10 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Most Abundant Crop */}
-            <div className="bg-white p-6 rounded-lg shadow">
+            {/* Most Abundant Crop - Green */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-[#00563F]">
               <div className="flex items-center">
-                <div className="p-3 rounded-full bg-blue-100 text-blue-600 mr-4">
+                <div className="p-3 rounded-full bg-[#e6f2ef] text-[#00563F] mr-4">
                   <svg
                     className="w-8 h-8"
                     fill="none"
@@ -142,10 +281,10 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Recent Harvest */}
-            <div className="bg-white p-6 rounded-lg shadow">
+            {/* Recent Harvest - Gold */}
+            <div className="bg-white p-6 rounded-lg shadow border-t-4 border-[#FFB61C]">
               <div className="flex items-center">
-                <div className="p-3 rounded-full bg-yellow-100 text-yellow-600 mr-4">
+                <div className="p-3 rounded-full bg-[#fff5e0] text-[#FFB61C] mr-4">
                   <svg
                     className="w-8 h-8"
                     fill="none"
@@ -178,11 +317,128 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+          {/* Crop Selection Dropdown */}
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Crop Statistics
+              </h3>
+              <select
+                value={selectedCrop}
+                onChange={(e) => setSelectedCrop(e.target.value)}
+                className="bg-gray-50 border border-gray-300 text-gray-700 py-2 px-4 rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="All Crops">All Crops</option>
+                {cropStats.map((crop) => (
+                  <option key={crop.crop} value={crop.crop}>
+                    {crop.crop}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Statistics Display */}
+            {selectedCrop === "All Crops" ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {cropStats.map((crop) => (
+                  <div key={crop.crop} className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-700">{crop.crop}</h4>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-700">Total Harvested:</p>
+                      <p className="text-xl font-bold text-green-600">
+                        {crop.total.toFixed(2)} kg
+                      </p>
+                    </div>
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-700">Recent Varieties:</p>
+                      <p className="text-sm text-gray-400">
+                        {recentHarvests
+                          .filter((h) => h.crop === crop.crop)
+                          .slice(0, 3)
+                          .map((h) => h.variety)
+                          .join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div>
+                {/* Detailed View for Selected Crop */}
+                <div className="flex justify-between gap-6">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-700 mb-2">
+                      {selectedCrop} Overview
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm text-gray-500">
+                          Total Harvested:
+                        </p>
+                        <p className="text-xl font-bold text-green-600">
+                          {cropStats
+                            .find((c) => c.crop === selectedCrop)
+                            ?.total.toFixed(2) || 0}{" "}
+                          kg
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-700 mb-2">
+                      Recent Activity
+                    </h4>
+                    <div className="overflow-x-auto">
+                      {/* Recent Harvests Table */}
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Date
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Batch ID
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Crop
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Quantity (kg)
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {recentHarvests.map((harvest) => (
+                            <tr key={harvest.id}>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {harvest.dateHarvested?.toLocaleDateString() ||
+                                  "-"}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {harvest.seedBatchId}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {harvest.crop}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {harvest.balance.toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Recent Activity Sections */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Recent Harvests */}
-            <div className="bg-white p-6 rounded-lg shadow">
+            <div className="bg-white p-6 rounded-lg shadow mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">
                 Recent Harvests
               </h3>
@@ -221,7 +477,7 @@ export default function Dashboard() {
             </div>
 
             {/* Recent Distributions */}
-            <div className="bg-white p-6 rounded-lg shadow">
+            <div className="bg-white p-6 rounded-lg shadow mb-6">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">
                 Recent Distributions
               </h3>
@@ -257,6 +513,56 @@ export default function Dashboard() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+
+          {/* Harvest Trends Chart */}
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              Harvest Trends (Last 6 Months)
+            </h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={harvestTrends}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value) => [`${value} kg`, "Quantity"]}
+                    labelFormatter={(label) => `Month: ${label}`}
+                  />
+                  <Bar
+                    dataKey="total"
+                    fill="#8D1436"
+                    name="Harvested Quantity"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Distribution Trends Chart */}
+          <div className="bg-white p-6 rounded-lg shadow mb-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">
+              Distribution Trends (Last 6 Months)
+            </h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={distributionTrends}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" />
+                  <YAxis />
+                  <Tooltip
+                    formatter={(value) => [`${value} kg`, "Quantity"]}
+                    labelFormatter={(label) => `Month: ${label}`}
+                  />
+                  <Bar
+                    dataKey="total"
+                    fill="#00563F"
+                    name="Distributed Quantity"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>

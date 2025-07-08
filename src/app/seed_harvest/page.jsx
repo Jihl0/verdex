@@ -12,6 +12,8 @@ import {
 } from "@/lib/db";
 import { useAuth } from "@/context/AuthContext";
 import { CROP_VARIETIES } from "@/constants/variety";
+import { CLASSIFICATIONS } from "@/constants/classifications";
+import ExcelImportExport from "@/components/ExcelImportExport";
 import AuthGuard from "@/utils/AuthGuard";
 
 export default function SeedHarvest() {
@@ -191,50 +193,208 @@ export default function SeedHarvest() {
     }
   };
 
-  const handleUpdate = async (e) => {
-    e.preventDefault();
+  // const handleUpdate = async (e) => {
+  //   e.preventDefault();
 
-    try {
-      const finalData = {
-        ...formData,
-        inQuantity: parseInt(formData.inQuantity) || 0,
-        outQuantity: parseInt(formData.outQuantity) || 0,
-        balance: parseInt(formData.balance) || 0,
-        area: parseFloat(formData.area),
-        totalLotArea: parseFloat(formData.totalLotArea),
-        germination: parseFloat(formData.germination),
+  //   try {
+  //     const finalData = {
+  //       ...formData,
+  //       inQuantity: parseInt(formData.inQuantity) || 0,
+  //       outQuantity: parseInt(formData.outQuantity) || 0,
+  //       balance: parseInt(formData.balance) || 0,
+  //       area: parseFloat(formData.area),
+  //       totalLotArea: parseFloat(formData.totalLotArea),
+  //       germination: parseFloat(formData.germination),
+  //     };
+
+  //     await updateSeedHarvest(editingId, finalData);
+
+  //     // Refresh data
+  //     const harvestsData = await getRecentHarvests();
+  //     setHarvests(harvestsData);
+
+  //     // Reset form
+  //     setEditingId(null);
+  //     setShowForm(false);
+  //     setFormData({
+  //       status: "Active",
+  //       datePlanted: "",
+  //       crop: "Soybean",
+  //       variety: "Tiwala 6",
+  //       classification: "",
+  //       dateHarvested: "",
+  //       area: "",
+  //       totalLotArea: "",
+  //       germination: "",
+  //       inQuantity: 0,
+  //       outQuantity: 0,
+  //       balance: 0,
+  //       remarks: "",
+  //     });
+
+  //     alert("Record updated successfully!");
+  //   } catch (error) {
+  //     console.error("Error updating record:", error);
+  //     alert("Failed to update record");
+  //   }
+  // };
+
+  // Helper function to capitalize first letter of each word
+
+  const capitalizeWords = (str) => {
+    if (!str || typeof str !== "string") return str;
+    return str
+      .toLowerCase()
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
+  const handleHarvestUpload = async (jsonData) => {
+    // Skip header row and process each row
+    for (let i = 1; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      if (!row || row.length === 0) continue;
+
+      // Map row data to fields
+      let [
+        crop,
+        variety,
+        classification,
+        area,
+        totalLotArea,
+        germination,
+        datePlanted,
+        dateHarvested,
+        inQuantity,
+        outQuantity,
+        remarks,
+      ] = row;
+
+      // Format string fields
+      crop = capitalizeWords(crop);
+      variety = capitalizeWords(variety);
+      classification = capitalizeWords(classification);
+      area = capitalizeWords(area);
+      remarks = capitalizeWords(remarks);
+
+      // Calculate balance
+      const balance =
+        parseFloat(outQuantity || 0) - parseFloat(inQuantity || 0);
+
+      // Function to parse dates from Excel or string input (Philippines timezone)
+      const parseDate = (dateValue) => {
+        if (!dateValue) return null;
+
+        // If it's an Excel serial date number
+        if (typeof dateValue === "number") {
+          // Excel's epoch is December 30, 1899 (Philippines time)
+          const excelEpoch = new Date("1899-12-30T00:00:00+08:00");
+          const date = new Date(
+            excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000
+          );
+          return date;
+        }
+
+        // If it's already a Date object
+        if (dateValue instanceof Date) {
+          return dateValue;
+        }
+
+        // Try parsing as MM/DD/YYYY (Philippines time)
+        if (typeof dateValue === "string" && dateValue.includes("/")) {
+          const [month, day, year] = dateValue.split("/").map(Number);
+          // Create date in Philippines timezone (UTC+8)
+          return new Date(`${year}-${month}-${day}T00:00:00+08:00`);
+        }
+
+        // Try parsing as YYYY-MM-DD (Philippines time)
+        if (typeof dateValue === "string" && dateValue.includes("-")) {
+          return new Date(`${dateValue}T00:00:00+08:00`);
+        }
+
+        return null;
       };
 
-      await updateSeedHarvest(editingId, finalData);
+      // Format dates for display/storage (Philippines timezone)
+      const formatDateForStorage = (date) => {
+        if (!date) return "";
 
-      // Refresh data
-      const harvestsData = await getRecentHarvests();
-      setHarvests(harvestsData);
+        // Convert to Philippines timezone string
+        const phDate = new Date(date.getTime() + 8 * 60 * 60 * 1000); // Add 8 hours if not already in PH time
+        const year = phDate.getFullYear();
+        const month = String(phDate.getMonth() + 1).padStart(2, "0");
+        const day = String(phDate.getDate()).padStart(2, "0");
 
-      // Reset form
-      setEditingId(null);
-      setShowForm(false);
-      setFormData({
+        return `${year}-${month}-${day}`;
+      };
+
+      // Parse dates with proper handling
+      const parsedDatePlanted = parseDate(datePlanted);
+      const parsedDateHarvested = parseDate(dateHarvested);
+
+      // Generate seedBatchId using harvest date
+      let seedBatchId = "";
+      if (parsedDateHarvested && crop && variety) {
+        try {
+          const year = parsedDateHarvested.getFullYear();
+          const month = String(parsedDateHarvested.getMonth() + 1).padStart(
+            2,
+            "0"
+          );
+          const cropAbbr = getCropAbbreviation(crop);
+          const varAbbr = formatVarietyId(variety);
+          seedBatchId = `${year}-${month}-${cropAbbr}-${varAbbr}`;
+        } catch (error) {
+          console.error("Error generating seedBatchId:", error);
+          seedBatchId = `TEMP-${uuidv4().substring(0, 8)}`;
+        }
+      }
+
+      const harvestData = {
+        seedBatchId: seedBatchId || `TEMP-${uuidv4().substring(0, 8)}`,
         status: "Active",
-        datePlanted: "",
-        crop: "Soybean",
-        variety: "Tiwala 6",
-        classification: "",
-        dateHarvested: "",
-        area: "",
-        totalLotArea: "",
-        germination: "",
-        inQuantity: 0,
-        outQuantity: 0,
-        balance: 0,
-        remarks: "",
-      });
+        crop,
+        variety,
+        classification,
+        area,
+        totalLotArea: parseFloat(totalLotArea) || 0,
+        germination: parseFloat(germination) || 0,
+        datePlanted: formatDateForStorage(parsedDatePlanted),
+        dateHarvested:
+          formatDateForStorage(parsedDateHarvested) ||
+          new Date().toISOString().split("T")[0],
+        inQuantity: parseFloat(inQuantity) || 0,
+        outQuantity: parseFloat(outQuantity) || 0,
+        balance,
+        remarks: remarks || "",
+        createdBy: currentUser.uid,
+        createdAt: new Date().toISOString(),
+      };
 
-      alert("Record updated successfully!");
-    } catch (error) {
-      console.error("Error updating record:", error);
-      alert("Failed to update record");
+      // Validate required fields
+      if (
+        !crop ||
+        !variety ||
+        !classification ||
+        !parsedDatePlanted ||
+        !parsedDateHarvested
+      ) {
+        console.warn(`Skipping row ${i} due to missing required fields`);
+        continue;
+      }
+
+      // Save to Firebase
+      await addSeedHarvest(harvestData);
     }
+
+    // Refresh the harvests list
+    const harvestsData = await getSeedHarvests();
+    setHarvests(harvestsData);
+
+    // Close the form popup after successful upload
+    setShowForm(false);
+    alert("Seed harvest records imported successfully!");
   };
 
   const columns = [
@@ -312,6 +472,26 @@ export default function SeedHarvest() {
       ),
       cellClassName: "text-right",
     },
+  ];
+
+  const harvestDropdowns = {
+    crop: Object.keys(CROP_VARIETIES),
+    variety: Object.values(CROP_VARIETIES).flat(),
+    classification: CLASSIFICATIONS,
+  };
+
+  const harvestTemplateColumns = [
+    { key: "crop", header: "Crop", example: "Soybean" },
+    { key: "variety", header: "Variety", example: "Tiwala 6" },
+    { key: "classification", header: "Classification", example: "Certified" },
+    { key: "area", header: "Name of Area", example: "Area A" },
+    { key: "totalLotArea", header: "Total Lot Area (sqm)", example: "1000" },
+    { key: "germination", header: "Germination Rate", example: "95" },
+    { key: "datePlanted", header: "Date Planted", example: "2023-06-15" },
+    { key: "dateHarvested", header: "Date Harvested", example: "2023-09-20" }, // Added harvest date
+    { key: "inQuantity", header: "Quantity Planted (kg)", example: "100" },
+    { key: "outQuantity", header: "Quantity Harvested (kg)", example: "90" },
+    { key: "remarks", header: "Remarks", example: "Good harvest" },
   ];
 
   const handleSidebarToggle = (collapsed) => {
@@ -609,12 +789,22 @@ export default function SeedHarvest() {
                 </div>
 
                 <div className="mt-6 flex justify-end">
-                  <button
-                    type="submit"
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
-                  >
-                    {editingId ? "Update Record" : "Save Record"}
-                  </button>
+                  <div className="flex gap-10">
+                    <ExcelImportExport
+                      columns={harvestTemplateColumns}
+                      fileName="Seed_Harvest"
+                      onUpload={handleHarvestUpload}
+                      dropdowns={harvestDropdowns}
+                      disabled={!currentUser}
+                    />
+                    <button
+                      type="submit"
+                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
+                    >
+                      {editingId ? "Update Record" : "Save Record"}
+                    </button>
+                  </div>
+
                   {editingId && (
                     <button
                       type="button"

@@ -375,3 +375,123 @@ export const deleteSeedDistribution = async (distributionId) => {
     throw error;
   }
 };
+
+export const getCropHarvestStats = async () => {
+  try {
+    // Use the modular query syntax
+    const q = query(collection(db, "seedHarvests"));
+    const querySnapshot = await getDocs(q);
+
+    const harvests = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Group by crop and sum quantities
+    const cropStats = harvests.reduce((acc, harvest) => {
+      if (!harvest.crop) return acc; // Skip if no crop specified
+
+      const existing = acc.find((item) => item.crop === harvest.crop);
+      if (existing) {
+        existing.total += harvest.balance || 0;
+      } else {
+        acc.push({
+          crop: harvest.crop,
+          total: harvest.balance || 0,
+        });
+      }
+      return acc;
+    }, []);
+
+    return cropStats;
+  } catch (error) {
+    console.error("Error getting crop harvest stats:", error);
+    return [];
+  }
+};
+
+export const getHarvestTrends = async () => {
+  try {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const q = query(
+      collection(db, "seedHarvests"),
+      where("dateHarvested", ">=", Timestamp.fromDate(sixMonthsAgo)),
+      orderBy("dateHarvested")
+    );
+
+    const querySnapshot = await getDocs(q);
+    const harvests = querySnapshot.docs.map((doc) => ({
+      ...doc.data(),
+      dateHarvested: doc.data().dateHarvested?.toDate(),
+    }));
+
+    // Group by month
+    const monthlyData = harvests.reduce((acc, harvest) => {
+      if (!harvest.dateHarvested) return acc;
+
+      const month = harvest.dateHarvested.toLocaleString("default", {
+        month: "short",
+      });
+      const existing = acc.find((item) => item.month === month);
+
+      if (existing) {
+        existing.total += harvest.balance || 0;
+      } else {
+        acc.push({
+          month,
+          total: harvest.balance || 0,
+        });
+      }
+      return acc;
+    }, []);
+
+    return monthlyData;
+  } catch (error) {
+    console.error("Error getting harvest trends:", error);
+    return [];
+  }
+};
+
+export const getDistributionTrends = async () => {
+  try {
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+    const q = query(
+      collection(db, "seedDistributions"),
+      where("date", ">=", Timestamp.fromDate(sixMonthsAgo)),
+      orderBy("date")
+    );
+
+    const querySnapshot = await getDocs(q);
+    const distributions = querySnapshot.docs.map((doc) => ({
+      ...doc.data(),
+      date: doc.data().date?.toDate(),
+    }));
+
+    // Group by month
+    const monthlyData = distributions.reduce((acc, dist) => {
+      if (!dist.date) return acc;
+
+      const month = dist.date.toLocaleString("default", { month: "short" });
+      const existing = acc.find((item) => item.month === month);
+
+      if (existing) {
+        existing.total += dist.quantity || 0;
+      } else {
+        acc.push({
+          month,
+          total: dist.quantity || 0,
+        });
+      }
+      return acc;
+    }, []);
+
+    return monthlyData;
+  } catch (error) {
+    console.error("Error getting distribution trends:", error);
+    return [];
+  }
+};

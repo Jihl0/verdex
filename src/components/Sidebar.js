@@ -4,12 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useState, useEffect } from "react";
+import { logout as authLogout } from "@/lib/auth";
 
 const Sidebar = ({ onToggle }) => {
   const pathname = usePathname();
-  const { logout, currentUser } = useAuth();
+  const { logout: contextLogout, currentUser } = useAuth();
   const [collapsed, setCollapsed] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const logout = contextLogout || authLogout;
 
   // Save sidebar state to localStorage
   useEffect(() => {
@@ -101,31 +104,38 @@ const Sidebar = ({ onToggle }) => {
 
       {/* User & Logout Section */}
       <div className="p-4 border-t border-green-700">
-        {!collapsed && (
-          <div className="mb-4 text-sm">
-            <p className="font-medium truncate">
-              {currentUser?.email || "User"}
-            </p>
-            <p className="text-green-200">Administrator</p>
-          </div>
-        )}
-        <button
-          onClick={handleLogout}
-          disabled={isLoggingOut}
-          className={`flex items-center w-full p-3 text-green-200 hover:bg-green-700 rounded-lg transition-colors ${
-            collapsed ? "justify-center" : ""
-          } ${isLoggingOut ? "opacity-50 cursor-not-allowed" : ""}`}
-          title={collapsed ? "Sign Out" : ""}
+        <div
+          className={`flex ${
+            collapsed
+              ? "flex-col items-center"
+              : "flex-row justify-between items-center"
+          }`}
         >
-          {isLoggingOut ? (
-            <span className="material-icons-round animate-spin">autorenew</span>
-          ) : (
-            <>
-              <span className="material-icons-round">logout</span>
-              {!collapsed && <span className="ml-3">Sign Out</span>}
-            </>
+          {!collapsed && (
+            <div className="text-sm">
+              <p className="font-medium truncate">
+                {currentUser?.email || "User"}
+              </p>
+              <p className="text-green-200">Administrator</p>
+            </div>
           )}
-        </button>
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className={`flex items-center p-2 text-green-200 hover:bg-green-700 rounded-lg transition-colors ${
+              isLoggingOut ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            title={collapsed ? "Sign Out" : ""}
+          >
+            {isLoggingOut ? (
+              <span className="material-icons-round animate-spin">
+                autorenew
+              </span>
+            ) : (
+              <span className="material-icons-round">logout</span>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

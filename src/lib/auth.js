@@ -1,4 +1,5 @@
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+// lib/auth.js
+import { getAuth, signInWithEmailAndPassword, signOut } from "firebase/auth"; // Add signOut to imports
 import { app } from "./firebase";
 
 const auth = getAuth(app);
@@ -13,6 +14,19 @@ export const signIn = async (email, password) => {
     return userCredential.user;
   } catch (error) {
     throw new Error(getAuthErrorMessage(error.code));
+  }
+};
+
+export const logout = async () => {
+  try {
+    await signOut(auth);
+    // Clear client-side storage
+    localStorage.clear();
+    sessionStorage.clear();
+    return true;
+  } catch (error) {
+    console.error("Logout error:", error);
+    throw new Error("Failed to logout. Please try again.");
   }
 };
 
