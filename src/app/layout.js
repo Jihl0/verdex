@@ -25,6 +25,7 @@ export default function RootLayout({ children }) {
           href="https://fonts.googleapis.com/icon?family=Material+Icons+Round"
           rel="stylesheet"
         />
+        <link rel="icon" href="/logo.svg" type="image/svg+xml" />
       </head>
       <body
         className={`${InterFont.variable} ${RobotoFont.variable} antialiased`}

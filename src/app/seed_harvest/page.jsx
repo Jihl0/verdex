@@ -9,6 +9,7 @@ import {
   getSeedHarvests,
   updateSeedHarvest,
   deleteSeedHarvest,
+  getRecentHarvests,
 } from "@/lib/db";
 import { useAuth } from "@/context/AuthContext";
 import { CROP_VARIETIES } from "@/constants/variety";
@@ -165,7 +166,7 @@ export default function SeedHarvest() {
       await addSeedHarvest(finalData);
 
       // Refresh the harvests list
-      const harvestsData = await getRecentHarvests();
+      const harvestsData = await getSeedHarvests();
       setHarvests(harvestsData);
 
       // Reset form
@@ -192,52 +193,6 @@ export default function SeedHarvest() {
       alert("Failed to add record");
     }
   };
-
-  // const handleUpdate = async (e) => {
-  //   e.preventDefault();
-
-  //   try {
-  //     const finalData = {
-  //       ...formData,
-  //       inQuantity: parseInt(formData.inQuantity) || 0,
-  //       outQuantity: parseInt(formData.outQuantity) || 0,
-  //       balance: parseInt(formData.balance) || 0,
-  //       area: parseFloat(formData.area),
-  //       totalLotArea: parseFloat(formData.totalLotArea),
-  //       germination: parseFloat(formData.germination),
-  //     };
-
-  //     await updateSeedHarvest(editingId, finalData);
-
-  //     // Refresh data
-  //     const harvestsData = await getRecentHarvests();
-  //     setHarvests(harvestsData);
-
-  //     // Reset form
-  //     setEditingId(null);
-  //     setShowForm(false);
-  //     setFormData({
-  //       status: "Active",
-  //       datePlanted: "",
-  //       crop: "Soybean",
-  //       variety: "Tiwala 6",
-  //       classification: "",
-  //       dateHarvested: "",
-  //       area: "",
-  //       totalLotArea: "",
-  //       germination: "",
-  //       inQuantity: 0,
-  //       outQuantity: 0,
-  //       balance: 0,
-  //       remarks: "",
-  //     });
-
-  //     alert("Record updated successfully!");
-  //   } catch (error) {
-  //     console.error("Error updating record:", error);
-  //     alert("Failed to update record");
-  //   }
-  // };
 
   // Helper function to capitalize first letter of each word
 
@@ -579,7 +534,7 @@ export default function SeedHarvest() {
                     >
                       <option value="Active">Active</option>
                       <option value="Reduced">Reduced</option>
-                      <option value="Archived">Archived</option>
+                      <option value="Archived">Storage</option>
                       <option value="Depleted">Depleted</option>
                     </select>
                   </div>
@@ -728,7 +683,7 @@ export default function SeedHarvest() {
                   {/* In Quantity */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity Planted (kg) *
+                      Quantity Harvested (kg) *
                     </label>
                     <input
                       type="number"
@@ -745,7 +700,7 @@ export default function SeedHarvest() {
                   {/* Out Quantity */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity Harvested (kg)
+                      Quantity to Use (kg)
                     </label>
                     <input
                       type="number"

@@ -517,7 +517,7 @@ export default function Dashboard() {
           </div>
 
           {/* Harvest Trends Chart */}
-          <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <div className="bg-white p-6 rounded-lg shadow mb-6 text-gray-800">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">
               Harvest Trends (Last 6 Months)
             </h3>
@@ -542,7 +542,7 @@ export default function Dashboard() {
           </div>
 
           {/* Distribution Trends Chart */}
-          <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <div className="bg-white p-6 rounded-lg shadow text-gray-800 mb-6">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">
               Distribution Trends (Last 6 Months)
             </h3>
