@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 
 const DetailItem = ({ label, value }) => (
   <div className="mb-3">
@@ -9,6 +9,7 @@ const DetailItem = ({ label, value }) => (
 
 const DetailModal = ({ record, onClose }) => {
   const modalRef = useRef(null);
+  const [showLogs, setShowLogs] = useState(true);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -17,6 +18,20 @@ const DetailModal = ({ record, onClose }) => {
       }
     };
 
+    console.log("Current record data:", record);
+    if (record?.logs) {
+      console.log("Logs data:", record.logs);
+      record.logs.forEach((log, i) => {
+        console.log(`Log ${i}:`, log);
+        if (log.date) {
+          console.log(
+            `Log ${i} date:`,
+            log.date?.toDate ? log.date.toDate() : new Date(log.date)
+          );
+        }
+      });
+    }
+
     // Add when component mounts
     document.addEventListener("mousedown", handleClickOutside);
 
@@ -24,7 +39,7 @@ const DetailModal = ({ record, onClose }) => {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [onClose]);
+  }, [onClose, record]);
 
   if (!record) return null;
 
@@ -135,6 +150,161 @@ const DetailModal = ({ record, onClose }) => {
               <DetailItem label="Germination Rate" value={record.germination} />
               <DetailItem label="Remarks" value={record.remarks} />
             </div>
+          </div>
+
+          {/* Logs Section */}
+          <div className="border-t border-gray-200 pt-4 mt-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-lg font-medium text-gray-800">
+                Distribution History
+              </h3>
+              <button
+                onClick={() => setShowLogs(!showLogs)}
+                className="text-sm text-green-600 hover:text-green-800 flex items-center gap-1 px-3 py-1 rounded-md hover:bg-green-50 transition-colors"
+              >
+                {showLogs ? (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Hide History
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    Show History
+                  </>
+                )}
+              </button>
+            </div>
+
+            {showLogs && (
+              <div className="space-y-3">
+                {record.logs?.length > 0 ? (
+                  <div className="overflow-hidden rounded-lg border border-gray-200">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Date
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Quantity
+                          </th>
+                          <th
+                            scope="col"
+                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            Details
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {record.logs
+                          .sort((a, b) => {
+                            const dateA = a.date?.toDate
+                              ? a.date.toDate()
+                              : new Date(a.date);
+                            const dateB = b.date?.toDate
+                              ? b.date.toDate()
+                              : new Date(b.date);
+                            return dateB - dateA;
+                          })
+                          .map((log, index) => {
+                            const logDate = log.date?.toDate
+                              ? log.date.toDate()
+                              : new Date(log.date);
+                            const isDistribution = log.quantity < 0;
+
+                            return (
+                              <tr key={index} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                                  {logDate.toLocaleDateString()}
+                                  <br />
+                                  <span className="text-xs text-gray-500">
+                                    {logDate.toLocaleTimeString()}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <span
+                                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                      isDistribution
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-green-100 text-green-800"
+                                    }`}
+                                  >
+                                    {isDistribution ? "⬇️ " : "⬆️ "}
+                                    {Math.abs(log.quantity)} kg
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-900">
+                                  <div>
+                                    <p className="font-medium">{log.note}</p>
+                                    {log.distributionId && (
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        ID: {log.distributionId}
+                                      </p>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                      />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">
+                      No distribution history
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Get started by creating a new distribution record.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

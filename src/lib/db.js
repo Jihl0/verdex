@@ -13,6 +13,7 @@ import {
   limit,
   increment,
   Timestamp,
+  runTransaction,
 } from "firebase/firestore";
 import { app } from "./firebase";
 
@@ -136,6 +137,8 @@ export const addSeedHarvest = async (harvestData) => {
     // Convert date strings to Firestore Timestamps
     const processedData = {
       ...harvestData,
+      classification: harvestData.classification || "",
+      area: harvestData.area || "",
       datePlanted: harvestData.datePlanted
         ? Timestamp.fromDate(new Date(harvestData.datePlanted))
         : null,
@@ -143,6 +146,7 @@ export const addSeedHarvest = async (harvestData) => {
         ? Timestamp.fromDate(new Date(harvestData.dateHarvested))
         : null,
       createdAt: Timestamp.now(),
+      logs: harvestData.logs || [],
     };
 
     const docRef = await addDoc(collection(db, "seedHarvests"), processedData);
@@ -181,6 +185,7 @@ export const getSeedHarvests = async () => {
         status: data.status || "Active",
         totalLotArea: data.totalLotArea || 0,
         variety: data.variety || "",
+        logs: data.logs || [],
       };
     });
   } catch (error) {
@@ -191,9 +196,17 @@ export const getSeedHarvests = async () => {
 
 export const updateSeedHarvest = async (id, harvestData) => {
   try {
-    const docRef = doc(db, "seedHarvests", id);
-    await updateDoc(docRef, harvestData);
+    // Create a clean data object without undefined values
+    const cleanData = {};
+    Object.keys(harvestData).forEach((key) => {
+      if (harvestData[key] !== undefined) {
+        cleanData[key] = harvestData[key];
+      }
+    });
+
+    await updateDoc(doc(db, "seedHarvests", id), cleanData);
   } catch (error) {
+    console.error("Error updating harvest:", error);
     throw error;
   }
 };
@@ -209,64 +222,59 @@ export const deleteSeedHarvest = async (id) => {
 
 export const addSeedDistribution = async (distributionData) => {
   try {
-    // 1. Validate and convert dates
-    const distributionDate =
-      distributionData.date instanceof Date
-        ? distributionData.date
-        : new Date(distributionData.date);
-
-    if (isNaN(distributionDate.getTime())) {
-      throw new Error("Invalid distribution date");
-    }
-
-    // 2. Find the harvest record
-    const harvestQuery = query(
-      collection(db, "seedHarvests"),
-      where("seedBatchId", "==", distributionData.seedBatchId)
-    );
-    const harvestSnapshot = await getDocs(harvestQuery);
-
-    if (harvestSnapshot.empty) {
-      throw new Error(
-        `No harvest found with batch ID: ${distributionData.seedBatchId}`
+    return await runTransaction(db, async (transaction) => {
+      // 1. Get the harvest record
+      const harvestQuery = query(
+        collection(db, "seedHarvests"),
+        where("seedBatchId", "==", distributionData.seedBatchId)
       );
-    }
+      const harvestSnapshot = await getDocs(harvestQuery);
 
-    const harvestDoc = harvestSnapshot.docs[0];
-    const harvestData = harvestDoc.data();
+      if (harvestSnapshot.empty) {
+        throw new Error(
+          `No harvest found with batch ID: ${distributionData.seedBatchId}`
+        );
+      }
 
-    // 3. Validate quantity
-    const quantity = Number(distributionData.quantity);
-    if (isNaN(quantity) || quantity <= 0) {
-      throw new Error("Invalid distribution quantity");
-    }
+      const harvestDoc = harvestSnapshot.docs[0];
+      const harvestData = harvestDoc.data();
 
-    // 4. Create distribution record with proper date
-    const docRef = await addDoc(collection(db, "seedDistributions"), {
-      ...distributionData,
-      date: Timestamp.fromDate(distributionDate), // Store as Firestore Timestamp
-      quantity: quantity,
-      createdAt: Timestamp.now(),
+      // 2. Validate quantity
+      const quantity = Number(distributionData.quantity);
+      if (isNaN(quantity)) throw new Error("Invalid quantity");
+      if (harvestData.balance < quantity) {
+        throw new Error("Insufficient quantity available");
+      }
+
+      // 3. Create distribution record
+      const distributionRef = doc(collection(db, "seedDistributions"));
+      const distributionWithTimestamp = {
+        ...distributionData,
+        date: Timestamp.fromDate(new Date(distributionData.date)),
+        quantity: quantity,
+        createdAt: Timestamp.now(),
+      };
+
+      // 4. Prepare harvest update
+      const harvestUpdate = {
+        balance: harvestData.balance - quantity,
+        logs: [
+          ...(harvestData.logs || []),
+          {
+            date: Timestamp.now(),
+            quantity: -quantity,
+            note: `Distributed ${quantity}kg to ${distributionData.recipientName} (${distributionData.affiliation}) for ${distributionData.purpose}`,
+            distributionId: distributionRef.id,
+          },
+        ],
+      };
+
+      // 5. Perform transaction
+      transaction.set(distributionRef, distributionWithTimestamp);
+      transaction.update(harvestDoc.ref, harvestUpdate);
+
+      return distributionRef.id;
     });
-
-    // 5. Prepare harvest remarks update with proper newline
-    const formattedDate = distributionDate.toLocaleDateString();
-    const newRemark = `\n[${formattedDate}] Distributed ${quantity}kg to ${distributionData.affiliation} (${distributionData.recipientName}) for ${distributionData.purpose}.`;
-
-    // Ensure existing remarks end with a newline before adding new remark
-    const updatedRemarks = harvestData.remarks
-      ? `${harvestData.remarks.trimEnd()}\n${newRemark.trim()}`
-      : newRemark.trim();
-
-    // 6. Update harvest record
-    await updateDoc(doc(db, "seedHarvests", harvestDoc.id), {
-      outQuantity: increment(quantity),
-      balance: increment(-quantity),
-      remarks: updatedRemarks,
-      status: "Reduced",
-    });
-
-    return docRef.id;
   } catch (error) {
     console.error("Error adding distribution:", error);
     throw error;

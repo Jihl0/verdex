@@ -14,9 +14,9 @@ export default function ExcelImportExport({
   const generateTemplate = () => {
     const wb = XLSX.utils.book_new();
 
-    // Filter out columns to exclude (like seedBatchId and status)
+    // Filter out columns to exclude (like seedBatchId, status, and outQuantity)
     const filteredColumns = columns.filter(
-      (col) => !["seedBatchId", "status"].includes(col.key)
+      (col) => !["seedBatchId", "status", "outQuantity"].includes(col.key)
     );
 
     // Prepare header row
@@ -27,6 +27,15 @@ export default function ExcelImportExport({
     if (exampleData) {
       const exampleRow = filteredColumns.map((col) => {
         if (col.key in exampleData) {
+          // For inQuantity, we'll show the example value but remove outQuantity
+          if (col.key === "inQuantity") {
+            return (
+              exampleData.inQuantity ||
+              exampleData.outQuantity ||
+              col.example ||
+              ""
+            );
+          }
           return exampleData[col.key];
         }
         return col.example || "";

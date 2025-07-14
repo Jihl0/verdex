@@ -36,12 +36,14 @@ export default function SeedHarvest() {
     outQuantity: 0,
     balance: 0,
     remarks: "",
+    logs: [],
   });
   const [editingId, setEditingId] = useState(null);
   const [varieties, setVarieties] = useState(CROP_VARIETIES.Soybean);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const loadHarvests = async () => {
@@ -88,16 +90,10 @@ export default function SeedHarvest() {
       }
 
       // Handle integer conversion for quantities
-      if (name === "inQuantity" || name === "outQuantity") {
-        const inQty =
-          parseInt(name === "inQuantity" ? value : newState.inQuantity) || 0;
-        const outQty =
-          parseInt(name === "outQuantity" ? value : newState.outQuantity) || 0;
-        newState.balance = outQty - inQty;
-
-        // Ensure we store the integer values
-        if (name === "inQuantity") newState.inQuantity = inQty;
-        if (name === "outQuantity") newState.outQuantity = outQty;
+      if (name === "inQuantity") {
+        const inQty = parseInt(value) || 0;
+        newState.inQuantity = inQty;
+        newState.balance = inQty; // Balance now equals inQuantity
       }
 
       // Generate seedBatchId (without variety abbreviation)
@@ -142,34 +138,68 @@ export default function SeedHarvest() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!formData.seedBatchId) {
-      alert("Please fill in all required fields to generate Seed Batch ID");
-      return;
-    }
-
     try {
-      // Calculate balance if not provided
-      const finalData = {
+      console.log("Form data before submission:", formData);
+      setError(null);
+
+      // Validate required fields
+      const requiredFields = [
+        "dateHarvested",
+        "crop",
+        "variety",
+        "classification",
+        "area",
+        "totalLotArea",
+        "germination",
+        "datePlanted",
+        "inQuantity",
+      ];
+
+      const missingFields = requiredFields.filter((field) => !formData[field]);
+      if (missingFields.length > 0) {
+        throw new Error(`Missing required fields: ${missingFields.join(", ")}`);
+      }
+
+      // Generate seedBatchId if not already set
+      if (!formData.seedBatchId) {
+        const year = new Date(formData.dateHarvested).getFullYear();
+        const month = String(
+          new Date(formData.dateHarvested).getMonth() + 1
+        ).padStart(2, "0");
+        const cropAbbr = getCropAbbreviation(formData.crop);
+        const varAbbr = formatVarietyId(formData.variety);
+        formData.seedBatchId = `${year}-${month}-${cropAbbr}-${varAbbr}`;
+      }
+
+      // Prepare the data to save
+      const harvestData = {
         ...formData,
-        // Convert to integers
-        inQuantity: parseInt(formData.inQuantity) || 0,
-        outQuantity: parseInt(formData.outQuantity) || 0,
-        balance: parseInt(formData.balance) || 0,
-        // Other conversions
-        area: parseFloat(formData.area),
-        totalLotArea: parseFloat(formData.totalLotArea),
-        germination: parseFloat(formData.germination),
+        datePlanted: formData.datePlanted
+          ? new Date(formData.datePlanted)
+          : null,
+        dateHarvested: new Date(formData.dateHarvested),
+        inQuantity: parseFloat(formData.inQuantity) || 0,
+        outQuantity: parseFloat(formData.outQuantity) || 0,
+        balance: parseFloat(formData.inQuantity) || 0, // Balance starts equal to inQuantity
         createdBy: currentUser.uid,
+        createdAt: new Date(),
       };
 
-      await addSeedHarvest(finalData);
+      if (editingId) {
+        // Update existing record
+        await updateSeedHarvest(editingId, harvestData);
+      } else {
+        // Add new record
+        await addSeedHarvest(harvestData);
+      }
 
-      // Refresh the harvests list
+      // Refresh data
       const harvestsData = await getSeedHarvests();
       setHarvests(harvestsData);
 
       // Reset form
+      setShowForm(false);
+      setEditingId(null);
       setFormData({
         status: "Active",
         datePlanted: "",
@@ -184,13 +214,11 @@ export default function SeedHarvest() {
         outQuantity: 0,
         balance: 0,
         remarks: "",
+        logs: [],
       });
-
-      setShowForm(false);
-      alert("Seed harvest record added successfully!");
     } catch (error) {
-      console.error("Error adding seed harvest:", error);
-      alert("Failed to add record");
+      console.error("Error saving record:", error);
+      setError(error.message);
     }
   };
 
@@ -222,7 +250,6 @@ export default function SeedHarvest() {
         datePlanted,
         dateHarvested,
         inQuantity,
-        outQuantity,
         remarks,
       ] = row;
 
@@ -233,9 +260,7 @@ export default function SeedHarvest() {
       area = capitalizeWords(area);
       remarks = capitalizeWords(remarks);
 
-      // Calculate balance
-      const balance =
-        parseFloat(outQuantity || 0) - parseFloat(inQuantity || 0);
+      const balance = parseFloat(inQuantity) || 0;
 
       // Function to parse dates from Excel or string input (Philippines timezone)
       const parseDate = (dateValue) => {
@@ -320,7 +345,7 @@ export default function SeedHarvest() {
           formatDateForStorage(parsedDateHarvested) ||
           new Date().toISOString().split("T")[0],
         inQuantity: parseFloat(inQuantity) || 0,
-        outQuantity: parseFloat(outQuantity) || 0,
+        outQuantity: 0,
         balance,
         remarks: remarks || "",
         createdBy: currentUser.uid,
@@ -443,9 +468,8 @@ export default function SeedHarvest() {
     { key: "totalLotArea", header: "Total Lot Area (sqm)", example: "1000" },
     { key: "germination", header: "Germination Rate", example: "95" },
     { key: "datePlanted", header: "Date Planted", example: "2023-06-15" },
-    { key: "dateHarvested", header: "Date Harvested", example: "2023-09-20" }, // Added harvest date
-    { key: "inQuantity", header: "Quantity Planted (kg)", example: "100" },
-    { key: "outQuantity", header: "Quantity Harvested (kg)", example: "90" },
+    { key: "dateHarvested", header: "Date Harvested", example: "2023-09-20" },
+    { key: "inQuantity", header: "Quantity (kg)", example: "100" },
     { key: "remarks", header: "Remarks", example: "Good harvest" },
   ];
 
@@ -499,7 +523,7 @@ export default function SeedHarvest() {
                 {editingId ? "Edit Harvest Record" : "Add New Harvest Record"}
               </h2>
               <form onSubmit={handleSubmit}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
                   {/* Seed Batch ID - Read only */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -589,6 +613,7 @@ export default function SeedHarvest() {
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
                     >
+                      <option value="">Select Classification</option>
                       <option value="Nucleus">Nucleus</option>
                       <option value="Breeder">Breeder</option>
                       <option value="Foundation">Foundation</option>
@@ -604,11 +629,12 @@ export default function SeedHarvest() {
                     </label>
                     <select
                       name="area"
-                      value={formData.status}
+                      value={formData.area}
                       onChange={handleChange}
                       required
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
                     >
+                      <option value="">Select Area</option>
                       <option value="Area_A">Area A</option>
                       <option value="Area_B">Area B</option>
                       <option value="Area_C">Area C</option>
@@ -693,22 +719,6 @@ export default function SeedHarvest() {
                       value={formData.inQuantity}
                       onChange={handleChange}
                       required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
-
-                  {/* Out Quantity */}
-                  <div className="form-group">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Quantity to Use (kg)
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      name="outQuantity"
-                      value={formData.outQuantity}
-                      onChange={handleChange}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
                     />
                   </div>

@@ -10,6 +10,7 @@ import {
   updateSeedDistribution,
   deleteSeedDistribution,
   getSeedHarvests,
+  updateSeedHarvest,
 } from "@/lib/db";
 import { useAuth } from "@/context/AuthContext";
 import AuthGuard from "@/utils/AuthGuard";
@@ -40,25 +41,13 @@ export default function SeedDistribution() {
     const loadData = async () => {
       try {
         setLoading(true);
-        console.log("Fetching data..."); // Debug log
-
         const [distributionsData, harvestsData] = await Promise.all([
           getSeedDistributions(),
           getSeedHarvests(),
         ]);
 
-        console.log("Harvests data:", harvestsData); // Debug log
-
         setDistributions(distributionsData);
-
-        const availableHarvests = harvestsData.filter((h) => {
-          const balance = Number(h.balance) || 0;
-          console.log(`Batch ${h.seedBatchId} balance:`, balance); // Debug log
-          return balance > 0;
-        });
-
-        console.log("Available harvests:", availableHarvests); // Debug log
-        setHarvests(availableHarvests);
+        setHarvests(harvestsData.filter((h) => (h.balance || 0) > 0));
       } catch (error) {
         console.error("Error loading data:", error);
         setError(`Failed to load data: ${error.message}`);
@@ -107,41 +96,48 @@ export default function SeedDistribution() {
     try {
       setError(null);
 
-      const finalData = {
-        ...formData,
-        date: new Date(formData.date),
-        quantity: parseFloat(formData.quantity) || 0,
-        createdBy: currentUser.uid,
-        createdAt: new Date(),
-      };
-
-      if (editingId) {
-        await updateSeedDistribution(editingId, finalData);
-      } else {
-        // Verify the selected harvest exists before adding
-        const selectedHarvest = harvests.find(
-          (h) => h.seedBatchId === formData.seedBatchId
-        );
-        if (!selectedHarvest) {
-          throw new Error("Selected seed batch not found");
-        }
-        if (selectedHarvest.balance < finalData.quantity) {
-          throw new Error("Insufficient quantity available");
-        }
-
-        await addSeedDistribution(finalData);
+      // Validate required fields
+      const requiredFields = [
+        "date",
+        "seedBatchId",
+        "quantity",
+        "purpose",
+        "affiliation",
+        "recipientName",
+      ];
+      const missingFields = requiredFields.filter((field) => !formData[field]);
+      if (missingFields.length > 0) {
+        throw new Error(`Missing required fields: ${missingFields.join(", ")}`);
       }
 
+      const quantity = parseFloat(formData.quantity);
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error("Quantity must be a positive number");
+      }
+
+      // Prepare distribution data with defaults
+      const distributionData = {
+        date: formData.date,
+        seedBatchId: formData.seedBatchId,
+        quantity: quantity,
+        purpose: formData.purpose,
+        affiliation: formData.affiliation,
+        recipientName: formData.recipientName,
+        contactNumber: formData.contactNumber || "",
+        remarks: formData.remarks || "",
+        createdBy: currentUser.uid,
+      };
+
+      await addSeedDistribution(distributionData);
+
       // Refresh data
-      const [distributionsData, harvestsData] = await Promise.all([
+      const [updatedDistributions, updatedHarvests] = await Promise.all([
         getSeedDistributions(),
         getSeedHarvests(),
       ]);
-      setDistributions(distributionsData);
-      setHarvests(harvestsData.filter((h) => (h.balance || 0) > 0));
 
-      // Reset form
-      setEditingId(null);
+      setDistributions(updatedDistributions);
+      setHarvests(updatedHarvests.filter((h) => (h.balance || 0) > 0));
       setShowForm(false);
       setFormData({
         date: "",
@@ -154,7 +150,7 @@ export default function SeedDistribution() {
         remarks: "",
       });
     } catch (error) {
-      console.error("Error saving record:", error);
+      console.error("Distribution error:", error);
       setError(error.message);
     }
   };
@@ -262,6 +258,12 @@ export default function SeedDistribution() {
               {showForm ? "Cancel" : "Add New Record"}
             </button>
           </div>
+
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+              {error}
+            </div>
+          )}
 
           {showForm && (
             <div className="bg-white p-6 rounded-lg shadow mb-8">
