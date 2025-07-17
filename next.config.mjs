@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
+  // Enable if using Firebase Storage/Realtime DB
   images: {
-    domains: ["firebasestorage.googleapis.com"], // Add other domains if needed
+    domains: ["firebasestorage.googleapis.com"],
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;
