@@ -158,7 +158,7 @@ export default function SeedDistribution() {
   const columns = [
     {
       key: "createdAt",
-      title: "Created At",
+      title: "Date Created",
       render: (row) =>
         row.createdAt instanceof Date
           ? row.createdAt.toLocaleDateString()
@@ -187,10 +187,6 @@ export default function SeedDistribution() {
       key: "quantity",
       title: "Quantity (kg)",
       render: (row) => row.quantity?.toFixed(2) || "0",
-    },
-    {
-      key: "purpose",
-      title: "Purpose",
     },
     {
       key: "actions",

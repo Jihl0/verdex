@@ -380,7 +380,7 @@ export default function SeedHarvest() {
   const columns = [
     {
       key: "createdAt",
-      title: "Created At",
+      title: "Date Created",
       render: (row) =>
         row.createdAt instanceof Date
           ? row.createdAt.toLocaleDateString()

@@ -26,6 +26,7 @@ import {
   Legend,
 } from "recharts";
 import { CROP_VARIETIES } from "@/constants/variety";
+import { saveAs } from "file-saver";
 
 export default function Dashboard() {
   const { currentUser } = useAuth();
@@ -78,6 +79,73 @@ export default function Dashboard() {
     setSidebarCollapsed(collapsed);
   };
 
+  const generateDashboardReport = () => {
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, "-");
+
+    // Create report content
+    let reportContent = `Verdex Seed Inventory Dashboard Report\n`;
+    reportContent += `Generated on: ${now.toLocaleString()}\n\n`;
+
+    // 1. Summary Stats
+    reportContent += `=== SUMMARY STATISTICS ===\n`;
+    reportContent += `Total Seeds: ${
+      stats?.totalSeeds?.toFixed(2) || "0"
+    } kg\n`;
+    reportContent += `Most Abundant Crop: ${
+      stats?.mostAbundantCrop || "N/A"
+    }\n`;
+    reportContent += `Recent Harvest: ${
+      stats?.recentHarvest
+        ? `${stats.recentHarvest.crop} - ${stats.recentHarvest.variety}`
+        : "N/A"
+    }\n\n`;
+
+    // 2. Crop Distribution
+    reportContent += `=== CROP DISTRIBUTION ===\n`;
+    cropStats.forEach((crop) => {
+      reportContent += `${crop.crop}: ${crop.total.toFixed(2)} kg (${(
+        (crop.total / stats.totalSeeds) *
+        100
+      ).toFixed(1)}%)\n`;
+    });
+    reportContent += "\n";
+
+    // 3. Recent Harvests
+    reportContent += `=== RECENT HARVESTS (LAST 5) ===\n`;
+    recentHarvests.forEach((harvest) => {
+      reportContent += `${harvest.seedBatchId}: ${harvest.crop} - ${
+        harvest.variety
+      }, ${harvest.balance.toFixed(2)} kg\n`;
+    });
+    reportContent += "\n";
+
+    // 4. Recent Distributions
+    reportContent += `=== RECENT DISTRIBUTIONS (LAST 5) ===\n`;
+    recentDistributions.forEach((dist) => {
+      reportContent += `${dist.seedBatchId}: ${
+        dist.recipientName
+      }, ${dist.quantity.toFixed(2)} kg\n`;
+    });
+
+    // 5. Trends data
+    reportContent += `\n=== HARVEST TRENDS (LAST 6 MONTHS) ===\n`;
+    harvestTrends.forEach((trend) => {
+      reportContent += `${trend.month}: ${trend.total.toFixed(2)} kg\n`;
+    });
+
+    reportContent += `\n=== DISTRIBUTION TRENDS (LAST 6 MONTHS) ===\n`;
+    distributionTrends.forEach((trend) => {
+      reportContent += `${trend.month}: ${trend.total.toFixed(2)} kg\n`;
+    });
+
+    // Create a Blob and trigger download
+    const blob = new Blob([reportContent], {
+      type: "text/plain;charset=utf-8",
+    });
+    saveAs(blob, `verdex-dashboard-report-${timestamp}.txt`);
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen">
@@ -103,7 +171,28 @@ export default function Dashboard() {
             sidebarCollapsed ? "ml-20" : "ml-64"
           } p-8`}
         >
-          <h1 className="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
+            <button
+              onClick={generateDashboardReport}
+              className="flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg"
+            >
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+              Download Report
+            </button>
+          </div>
 
           <div className="flex flex-col md:flex-row gap-6 mb-6">
             {/* Welcome Message - now takes half width on medium+ screens */}
