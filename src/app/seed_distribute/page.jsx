@@ -157,6 +157,14 @@ export default function SeedDistribution() {
 
   const columns = [
     {
+      key: "createdAt",
+      title: "Created At",
+      render: (row) =>
+        row.createdAt instanceof Date
+          ? row.createdAt.toLocaleDateString()
+          : "-",
+    },
+    {
       key: "date",
       title: "Date",
       render: (row) =>
@@ -454,7 +462,7 @@ export default function SeedDistribution() {
               columns={columns}
               data={distributions}
               sortable={true}
-              defaultSort={{ key: "date", direction: "descending" }}
+              defaultSort={{ key: "createdAt", direction: "descending" }}
               emptyMessage="No distribution records found"
               rowClassName="hover:bg-gray-50 cursor-pointer"
               headerClassName="bg-gray-50"

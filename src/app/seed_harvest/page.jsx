@@ -379,6 +379,14 @@ export default function SeedHarvest() {
 
   const columns = [
     {
+      key: "createdAt",
+      title: "Created At",
+      render: (row) =>
+        row.createdAt instanceof Date
+          ? row.createdAt.toLocaleDateString()
+          : "-",
+    },
+    {
       key: "seedBatchId",
       title: "Batch ID",
       headerClassName: "font-semibold",
