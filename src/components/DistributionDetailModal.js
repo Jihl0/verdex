@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useRef, useState, useEffect } from "react";
 import { fetchHarvestByBatchId } from "@/lib/db";
 
@@ -46,6 +48,17 @@ const DistributionDetailModal = ({ record, onClose }) => {
 
   if (!record) return null;
 
+  // Helper function to format dates
+  const formatDate = (date) => {
+    if (!date) return "-";
+    const dateObj = date instanceof Date ? date : new Date(date);
+    return isNaN(dateObj.getTime()) ? "-" : dateObj.toLocaleDateString();
+  };
+
+  // Determine the distribution type (default to exportation if not specified)
+  const distributionType = record.mode || "exportation";
+  const isBreeding = distributionType === "breeding";
+
   return (
     <div className="fixed inset-0 bg-gray bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div
@@ -54,9 +67,14 @@ const DistributionDetailModal = ({ record, onClose }) => {
       >
         {/* Modal Header */}
         <div className="flex justify-between items-center mb-8 pb-4 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-800">
-            Distribution Record Details
-          </h2>
+          <div className="flex items-center">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Distribution Record Details
+            </h2>
+            <span className="ml-4 px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full capitalize">
+              {distributionType}
+            </span>
+          </div>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition-colors"
@@ -107,27 +125,35 @@ const DistributionDetailModal = ({ record, onClose }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <DetailItem label="Distribution ID" value={record.id} />
-                <DetailItem
-                  label="Date"
-                  value={
-                    record.date
-                      ? new Date(record.date).toLocaleDateString()
-                      : "-"
-                  }
-                />
+                <DetailItem label="Date" value={formatDate(record.date)} />
                 <DetailItem label="Quantity" value={`${record.quantity} kg`} />
+                <DetailItem label="Purpose" value={record.purpose} />
               </div>
               <div>
-                <DetailItem label="Purpose" value={record.purpose} />
-                <DetailItem
-                  label="Affiliation/Office"
-                  value={record.affiliation}
-                />
-                <DetailItem label="Recipient" value={record.recipientName} />
-                <DetailItem
-                  label="Contact"
-                  value={record.contactNumber || "-"}
-                />
+                {isBreeding ? (
+                  <>
+                    <DetailItem
+                      label="Requested By"
+                      value={record.requestedBy}
+                    />
+                    <DetailItem label="Area" value={record.area} />
+                  </>
+                ) : (
+                  <>
+                    <DetailItem
+                      label="Affiliation/Office"
+                      value={record.affiliation}
+                    />
+                    <DetailItem
+                      label="Recipient Name"
+                      value={record.recipientName}
+                    />
+                    <DetailItem
+                      label="Contact Number"
+                      value={record.contactNumber}
+                    />
+                  </>
+                )}
               </div>
             </div>
 
@@ -179,11 +205,7 @@ const DistributionDetailModal = ({ record, onClose }) => {
                 <div>
                   <DetailItem
                     label="Harvest Date"
-                    value={
-                      harvestDetails.dateHarvested instanceof Date
-                        ? harvestDetails.dateHarvested.toLocaleDateString()
-                        : "-"
-                    }
+                    value={formatDate(harvestDetails.dateHarvested)}
                   />
                   <DetailItem
                     label="Classification"
@@ -247,16 +269,6 @@ const DistributionDetailModal = ({ record, onClose }) => {
             )}
           </div>
         </div>
-
-        {/* Footer */}
-        {/* <div className="mt-8 pt-6 border-t border-gray-200 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors duration-200"
-          >
-            Close
-          </button>
-        </div> */}
       </div>
     </div>
   );

@@ -7,6 +7,24 @@ const DetailItem = ({ label, value }) => (
   </div>
 );
 
+const DistributionTypeBadge = ({ type }) => {
+  const typeStyles = {
+    breeding: "bg-purple-100 text-purple-800",
+    exportation: "bg-blue-100 text-blue-800",
+    default: "bg-gray-100 text-gray-800",
+  };
+
+  return (
+    <span
+      className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full capitalize ${
+        typeStyles[type] || typeStyles.default
+      }`}
+    >
+      {type}
+    </span>
+  );
+};
+
 const DetailModal = ({ record, onClose }) => {
   const modalRef = useRef(null);
   const [showLogs, setShowLogs] = useState(true);
@@ -18,45 +36,87 @@ const DetailModal = ({ record, onClose }) => {
       }
     };
 
-    console.log("Current record data:", record);
-    if (record?.logs) {
-      console.log("Logs data:", record.logs);
-      record.logs.forEach((log, i) => {
-        console.log(`Log ${i}:`, log);
-        if (log.date) {
-          console.log(
-            `Log ${i} date:`,
-            log.date?.toDate ? log.date.toDate() : new Date(log.date)
-          );
-        }
-      });
-    }
-
-    // Add when component mounts
     document.addEventListener("mousedown", handleClickOutside);
-
-    // Clean up when component unmounts
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [onClose, record]);
+  }, [onClose]);
 
   if (!record) return null;
 
+  const renderDistributionDetails = (log) => {
+    const distributionType = log.mode || "exportation";
+
+    return (
+      <div className="space-y-1">
+        <p className="font-medium">{log.note || "Distribution record"}</p>
+
+        {log.purpose && (
+          <p className="text-xs text-gray-600">
+            <span className="font-semibold">Purpose:</span> {log.purpose}
+          </p>
+        )}
+
+        {distributionType === "exportation" ? (
+          <>
+            {log.recipientName && (
+              <p className="text-xs text-gray-600">
+                <span className="font-semibold">Recipient:</span>{" "}
+                {log.recipientName}
+              </p>
+            )}
+            {log.affiliation && (
+              <p className="text-xs text-gray-600">
+                <span className="font-semibold">Affiliation:</span>{" "}
+                {log.affiliation}
+              </p>
+            )}
+            {log.contactNumber && (
+              <p className="text-xs text-gray-600">
+                <span className="font-semibold">Contact:</span>{" "}
+                {log.contactNumber}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            {log.requestedBy && (
+              <p className="text-xs text-gray-600">
+                <span className="font-semibold">Requested by:</span>{" "}
+                {log.requestedBy}
+              </p>
+            )}
+            {log.area && (
+              <p className="text-xs text-gray-600">
+                <span className="font-semibold">Area:</span> {log.area}
+              </p>
+            )}
+          </>
+        )}
+
+        {log.distributionId && (
+          <p className="text-xs text-gray-500 mt-1">
+            <span className="font-semibold">ID:</span> {log.distributionId}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="fixed inset-0 bg-gray bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-gray-600 bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div
         ref={modalRef}
-        className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-xl"
       >
         {/* Modal Header */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-800">
-            Harvest Record Details
+            {record.seedBatchId} - Detailed Record
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100"
+            className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition-colors"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -75,7 +135,7 @@ const DetailModal = ({ record, onClose }) => {
           </button>
         </div>
 
-        {/* Main Content */}
+        {/* Main Content Sections */}
         <div className="space-y-6">
           {/* Basic Information Section */}
           <div className="bg-gray-50 p-4 rounded-lg">
@@ -105,6 +165,8 @@ const DetailModal = ({ record, onClose }) => {
                 value={
                   record.datePlanted instanceof Date
                     ? record.datePlanted.toLocaleDateString()
+                    : record.datePlanted?.toDate
+                    ? record.datePlanted.toDate().toLocaleDateString()
                     : "-"
                 }
               />
@@ -113,6 +175,8 @@ const DetailModal = ({ record, onClose }) => {
                 value={
                   record.dateHarvested instanceof Date
                     ? record.dateHarvested.toLocaleDateString()
+                    : record.dateHarvested?.toDate
+                    ? record.dateHarvested.toDate().toLocaleDateString()
                     : "-"
                 }
               />
@@ -121,6 +185,8 @@ const DetailModal = ({ record, onClose }) => {
                 value={
                   record.createdAt instanceof Date
                     ? record.createdAt.toLocaleDateString()
+                    : record.createdAt?.toDate
+                    ? record.createdAt.toDate().toLocaleDateString()
                     : "-"
                 }
               />
@@ -133,9 +199,18 @@ const DetailModal = ({ record, onClose }) => {
               Quantity Information
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <DetailItem label="Planted (kg)" value={record.inQuantity} />
-              <DetailItem label="Harvested (kg)" value={record.outQuantity} />
-              <DetailItem label="Balance (kg)" value={record.balance} />
+              <DetailItem
+                label="Planted (kg)"
+                value={record.inQuantity?.toFixed(2)}
+              />
+              <DetailItem
+                label="Harvested (kg)"
+                value={record.outQuantity?.toFixed(2)}
+              />
+              <DetailItem
+                label="Balance (kg)"
+                value={record.balance?.toFixed(2)}
+              />
             </div>
           </div>
 
@@ -147,12 +222,15 @@ const DetailModal = ({ record, onClose }) => {
             <div className="grid grid-cols-1 gap-4">
               <DetailItem label="Area" value={record.area} />
               <DetailItem label="Total Lot Area" value={record.totalLotArea} />
-              <DetailItem label="Germination Rate" value={record.germination} />
+              <DetailItem
+                label="Germination Rate"
+                value={record.germination ? `${record.germination}%` : "-"}
+              />
               <DetailItem label="Remarks" value={record.remarks} />
             </div>
           </div>
 
-          {/* Logs Section */}
+          {/* Distribution History Section */}
           <div className="border-t border-gray-200 pt-4 mt-4">
             <div className="flex justify-between items-center mb-3">
               <h3 className="text-lg font-medium text-gray-800">
@@ -201,26 +279,20 @@ const DetailModal = ({ record, onClose }) => {
             {showLogs && (
               <div className="space-y-3">
                 {record.logs?.length > 0 ? (
-                  <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <div className="overflow-hidden rounded-lg border border-gray-200 shadow-sm">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead className="bg-gray-50">
                         <tr>
-                          <th
-                            scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          >
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Date
                           </th>
-                          <th
-                            scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          >
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Type
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Quantity
                           </th>
-                          <th
-                            scope="col"
-                            className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          >
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Details
                           </th>
                         </tr>
@@ -244,12 +316,21 @@ const DetailModal = ({ record, onClose }) => {
 
                             return (
                               <tr key={index} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                                  {logDate.toLocaleDateString()}
-                                  <br />
-                                  <span className="text-xs text-gray-500">
-                                    {logDate.toLocaleTimeString()}
-                                  </span>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">
+                                    {logDate.toLocaleDateString()}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {logDate.toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <DistributionTypeBadge
+                                    type={log.mode || "exportation"}
+                                  />
                                 </td>
                                 <td className="px-4 py-3 whitespace-nowrap">
                                   <span
@@ -259,19 +340,12 @@ const DetailModal = ({ record, onClose }) => {
                                         : "bg-green-100 text-green-800"
                                     }`}
                                   >
-                                    {isDistribution ? "⬇️ " : "⬆️ "}
-                                    {Math.abs(log.quantity)} kg
+                                    {isDistribution ? "⬇ " : "⬆ "}
+                                    {Math.abs(log.quantity).toFixed(2)} kg
                                   </span>
                                 </td>
                                 <td className="px-4 py-3 text-sm text-gray-900">
-                                  <div>
-                                    <p className="font-medium">{log.note}</p>
-                                    {log.distributionId && (
-                                      <p className="text-xs text-gray-500 mt-1">
-                                        ID: {log.distributionId}
-                                      </p>
-                                    )}
-                                  </div>
+                                  {renderDistributionDetails(log)}
                                 </td>
                               </tr>
                             );

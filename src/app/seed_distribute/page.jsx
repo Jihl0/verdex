@@ -14,6 +14,8 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import AuthGuard from "@/utils/AuthGuard";
 import DistributionDetailModal from "@/components/DistributionDetailModal";
+import ExcelImportExport from "@/components/ExcelImportExport";
+import { v4 as uuidv4 } from "uuid";
 
 export default function SeedDistribution() {
   const { currentUser } = useAuth();
@@ -21,6 +23,7 @@ export default function SeedDistribution() {
   const [harvests, setHarvests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [formMode, setFormMode] = useState("exportation"); // 'exportation' or 'breeding'
   const [formData, setFormData] = useState({
     date: "",
     seedBatchId: "",
@@ -30,6 +33,8 @@ export default function SeedDistribution() {
     recipientName: "",
     contactNumber: "",
     remarks: "",
+    requestedBy: "",
+    area: "",
   });
   const [editingId, setEditingId] = useState(null);
   const [selectedRecord, setSelectedRecord] = useState(null);
@@ -65,11 +70,38 @@ export default function SeedDistribution() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Special handling for contact number
+    if (name === "contactNumber") {
+      // Only allow numbers and limit to 11 characters
+      if (/^\d*$/.test(value) && value.length <= 11) {
+        setFormData((prev) => ({ ...prev, [name]: value }));
+      }
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+  };
+
+  const handleModeToggle = () => {
+    setFormMode(formMode === "exportation" ? "breeding" : "exportation");
+    // Reset form when switching modes
+    setFormData({
+      date: "",
+      seedBatchId: "",
+      quantity: 0,
+      purpose: "",
+      affiliation: "",
+      recipientName: "",
+      contactNumber: "",
+      remarks: "",
+      requestedBy: "",
+      area: "",
+    });
   };
 
   const handleEdit = (record) => {
     setEditingId(record.id);
+    setFormMode(record.mode || "exportation"); // Default to exportation if mode not set
     setFormData({
       ...record,
       date: record.date?.toISOString().split("T")[0] || "",
@@ -96,23 +128,51 @@ export default function SeedDistribution() {
     try {
       setError(null);
 
-      // Validate required fields
-      const requiredFields = [
-        "date",
-        "seedBatchId",
-        "quantity",
-        "purpose",
-        "affiliation",
-        "recipientName",
-      ];
+      // Validate required fields based on mode
+      let requiredFields = [];
+      if (formMode === "exportation") {
+        requiredFields = [
+          "date",
+          "seedBatchId",
+          "quantity",
+          "purpose",
+          "affiliation",
+          "recipientName",
+        ];
+
+        // Add contact number validation only for exportation mode
+        if (formData.contactNumber && formData.contactNumber.length > 0) {
+          if (
+            !formData.contactNumber.startsWith("09") ||
+            formData.contactNumber.length !== 11
+          ) {
+            throw new Error(
+              "Contact number must start with 09 and be exactly 11 digits"
+            );
+          }
+        }
+      } else {
+        requiredFields = [
+          "date",
+          "seedBatchId",
+          "quantity",
+          "purpose",
+          "requestedBy",
+          "area",
+        ];
+      }
+
       const missingFields = requiredFields.filter((field) => !formData[field]);
       if (missingFields.length > 0) {
         throw new Error(`Missing required fields: ${missingFields.join(", ")}`);
       }
 
       const quantity = parseFloat(formData.quantity);
-      if (isNaN(quantity) || quantity <= 0) {
-        throw new Error("Quantity must be a positive number");
+      if (isNaN(quantity)) {
+        throw new Error("Quantity must be a number");
+      }
+      if (quantity <= 0) {
+        throw new Error("Quantity must be greater than 0");
       }
 
       // Prepare distribution data with defaults
@@ -121,12 +181,21 @@ export default function SeedDistribution() {
         seedBatchId: formData.seedBatchId,
         quantity: quantity,
         purpose: formData.purpose,
-        affiliation: formData.affiliation,
-        recipientName: formData.recipientName,
-        contactNumber: formData.contactNumber || "",
-        remarks: formData.remarks || "",
+        mode: formMode, // Store the mode with the record
         createdBy: currentUser.uid,
       };
+
+      // Add mode-specific fields
+      if (formMode === "exportation") {
+        distributionData.affiliation = formData.affiliation;
+        distributionData.recipientName = formData.recipientName;
+        distributionData.contactNumber = formData.contactNumber || "";
+        distributionData.remarks = formData.remarks || "";
+      } else {
+        distributionData.requestedBy = formData.requestedBy;
+        distributionData.area = formData.area;
+        distributionData.remarks = formData.remarks || "";
+      }
 
       await addSeedDistribution(distributionData);
 
@@ -148,11 +217,243 @@ export default function SeedDistribution() {
         recipientName: "",
         contactNumber: "",
         remarks: "",
+        requestedBy: "",
+        area: "",
       });
     } catch (error) {
       console.error("Distribution error:", error);
       setError(error.message);
     }
+  };
+
+  // Template columns for Excel export based on mode
+  const exportationTemplateColumns = [
+    { key: "date", header: "Date", example: "2023-10-15" },
+    {
+      key: "seedBatchId",
+      header: "Seed Batch ID",
+      example: "2023-09-SB-TIWALA_6",
+    },
+    { key: "quantity", header: "Quantity (kg)", example: "50" },
+    { key: "purpose", header: "Purpose", example: "Planting" },
+    {
+      key: "affiliation",
+      header: "Affiliation/Office",
+      example: "DA Region 5",
+    },
+    {
+      key: "recipientName",
+      header: "Recipient Name",
+      example: "Juan Dela Cruz",
+    },
+    { key: "contactNumber", header: "Contact Number", example: "09123456789" },
+    { key: "remarks", header: "Remarks", example: "For demo farm" },
+  ];
+
+  const breedingTemplateColumns = [
+    { key: "date", header: "Date", example: "2023-10-15" },
+    {
+      key: "seedBatchId",
+      header: "Seed Batch ID",
+      example: "2023-09-SB-TIWALA_6",
+    },
+    { key: "quantity", header: "Quantity (kg)", example: "5" },
+    { key: "purpose", header: "Purpose", example: "Breeding" },
+    { key: "requestedBy", header: "Requested By", example: "Dr. Smith" },
+    { key: "area", header: "Area", example: "Breeding Plot A" },
+    { key: "remarks", header: "Remarks", example: "For crossing experiment" },
+  ];
+
+  const distributionDropdowns = {
+    purpose: [
+      "Research",
+      "Planting",
+      "Demonstration",
+      "Seed Production",
+      "Other",
+      "Breeding",
+    ],
+  };
+
+  const handleDistributionUpload = async (jsonData) => {
+    // Skip header row and process each row
+    for (let i = 1; i < jsonData.length; i++) {
+      const row = jsonData[i];
+      if (!row || row.length === 0) continue;
+
+      // Determine mode based on columns present
+      const isBreeding = row.length <= 7; // Breeding has fewer columns
+
+      // Map row data to fields
+      let distributionData = {
+        createdBy: currentUser.uid,
+        createdAt: new Date(),
+      };
+
+      if (isBreeding) {
+        const [
+          date,
+          seedBatchId,
+          quantity,
+          purpose,
+          requestedBy,
+          area,
+          remarks,
+        ] = row;
+
+        // Validate required fields
+        if (
+          !date ||
+          !seedBatchId ||
+          !quantity ||
+          !purpose ||
+          !requestedBy ||
+          !area
+        ) {
+          console.warn(`Skipping row ${i} due to missing required fields`);
+          continue;
+        }
+
+        // Parse quantity
+        const parsedQuantity = parseFloat(quantity) || 0;
+        if (parsedQuantity <= 0) {
+          console.warn(`Skipping row ${i} - quantity must be positive`);
+          continue;
+        }
+
+        // Function to parse dates from Excel or string input
+        const parseDate = (dateValue) => {
+          if (!dateValue) return null;
+
+          // If it's an Excel serial date number
+          if (typeof dateValue === "number") {
+            const excelEpoch = new Date("1899-12-30");
+            const date = new Date(
+              excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000
+            );
+            return date;
+          }
+
+          // If it's already a Date object
+          if (dateValue instanceof Date) {
+            return dateValue;
+          }
+
+          // Try parsing as YYYY-MM-DD
+          if (typeof dateValue === "string" && dateValue.includes("-")) {
+            return new Date(dateValue);
+          }
+
+          return null;
+        };
+
+        const parsedDate = parseDate(date);
+
+        distributionData = {
+          ...distributionData,
+          date: parsedDate || new Date(),
+          seedBatchId,
+          quantity: parsedQuantity,
+          purpose,
+          requestedBy,
+          area,
+          remarks: remarks || "",
+          mode: "breeding",
+        };
+      } else {
+        // Exportation mode
+        const [
+          date,
+          seedBatchId,
+          quantity,
+          purpose,
+          affiliation,
+          recipientName,
+          contactNumber,
+          remarks,
+        ] = row;
+
+        // Validate required fields
+        if (
+          !date ||
+          !seedBatchId ||
+          !quantity ||
+          !purpose ||
+          !affiliation ||
+          !recipientName
+        ) {
+          console.warn(`Skipping row ${i} due to missing required fields`);
+          continue;
+        }
+
+        // Parse quantity
+        const parsedQuantity = parseFloat(quantity) || 0;
+        if (parsedQuantity <= 0) {
+          console.warn(`Skipping row ${i} - quantity must be positive`);
+          continue;
+        }
+
+        // Function to parse dates from Excel or string input
+        const parseDate = (dateValue) => {
+          if (!dateValue) return null;
+
+          // If it's an Excel serial date number
+          if (typeof dateValue === "number") {
+            const excelEpoch = new Date("1899-12-30");
+            const date = new Date(
+              excelEpoch.getTime() + dateValue * 24 * 60 * 60 * 1000
+            );
+            return date;
+          }
+
+          // If it's already a Date object
+          if (dateValue instanceof Date) {
+            return dateValue;
+          }
+
+          // Try parsing as YYYY-MM-DD
+          if (typeof dateValue === "string" && dateValue.includes("-")) {
+            return new Date(dateValue);
+          }
+
+          return null;
+        };
+
+        const parsedDate = parseDate(date);
+
+        distributionData = {
+          ...distributionData,
+          date: parsedDate || new Date(),
+          seedBatchId,
+          quantity: parsedQuantity,
+          purpose,
+          affiliation,
+          recipientName,
+          contactNumber: contactNumber || "",
+          remarks: remarks || "",
+          mode: "exportation",
+        };
+      }
+
+      try {
+        await addSeedDistribution(distributionData);
+      } catch (error) {
+        console.error(`Error saving row ${i}:`, error);
+      }
+    }
+
+    // Refresh data
+    const [updatedDistributions, updatedHarvests] = await Promise.all([
+      getSeedDistributions(),
+      getSeedHarvests(),
+    ]);
+
+    setDistributions(updatedDistributions);
+    setHarvests(updatedHarvests.filter((h) => (h.balance || 0) > 0));
+
+    // Close the form popup after successful upload
+    setShowForm(false);
+    alert("Distribution records imported successfully!");
   };
 
   const columns = [
@@ -176,12 +477,21 @@ export default function SeedDistribution() {
       title: "Batch ID",
     },
     {
+      key: "mode",
+      title: "Type",
+      render: (row) => (
+        <span className="capitalize">{row.mode || "exportation"}</span>
+      ),
+    },
+    {
       key: "recipientName",
-      title: "Recipient",
+      title: "Recipient/Requester",
+      render: (row) => row.recipientName || row.requestedBy || "-",
     },
     {
       key: "affiliation",
-      title: "Affiliation/Office",
+      title: "Affiliation/Area",
+      render: (row) => row.affiliation || row.area || "-",
     },
     {
       key: "quantity",
@@ -271,14 +581,35 @@ export default function SeedDistribution() {
 
           {showForm && (
             <div className="bg-white p-6 rounded-lg shadow mb-8">
-              <h2 className="text-xl font-semibold mb-4">
-                {editingId
-                  ? "Edit Distribution Record"
-                  : "Add New Distribution Record"}
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">
+                  {editingId
+                    ? "Edit Distribution Record"
+                    : "Add New Distribution Record"}
+                </h2>
+                <div className="flex items-center">
+                  <span className="mr-2 text-sm font-medium text-gray-700">
+                    {formMode === "exportation" ? "Exportation" : "Breeding"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleModeToggle}
+                    className="relative inline-flex items-center h-6 rounded-full w-11 bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                  >
+                    <span
+                      className={`${
+                        formMode === "exportation"
+                          ? "translate-x-1 bg-blue-600"
+                          : "translate-x-6 bg-green-600"
+                      } inline-block w-4 h-4 transform transition-transform rounded-full`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {/* Date */}
+                  {/* Date - Common to both modes */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Date *
@@ -293,7 +624,7 @@ export default function SeedDistribution() {
                     />
                   </div>
 
-                  {/* Seed Batch ID */}
+                  {/* Seed Batch ID - Common to both modes */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Seed Batch ID *
@@ -321,7 +652,7 @@ export default function SeedDistribution() {
                     )}
                   </div>
 
-                  {/* Quantity */}
+                  {/* Quantity - Common to both modes */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Quantity (kg) *
@@ -338,7 +669,7 @@ export default function SeedDistribution() {
                     />
                   </div>
 
-                  {/* Purpose */}
+                  {/* Purpose - Common to both modes */}
                   <div className="form-group">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Purpose *
@@ -355,56 +686,104 @@ export default function SeedDistribution() {
                       <option value="Planting">Planting</option>
                       <option value="Demonstration">Demonstration</option>
                       <option value="Seed Production">Seed Production</option>
+                      <option value="Breeding">Breeding</option>
                       <option value="Other">Other</option>
                     </select>
                   </div>
 
-                  {/* Affiliation/Office */}
-                  <div className="form-group">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Affiliation/Office *
-                    </label>
-                    <input
-                      type="text"
-                      name="affiliation"
-                      value={formData.affiliation}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
+                  {/* Mode-specific fields */}
+                  {formMode === "exportation" ? (
+                    <>
+                      {/* Affiliation/Office - Exportation only */}
+                      <div className="form-group">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Affiliation/Office *
+                        </label>
+                        <input
+                          type="text"
+                          name="affiliation"
+                          value={formData.affiliation}
+                          onChange={handleChange}
+                          required={formMode === "exportation"}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        />
+                      </div>
 
-                  {/* Recipient Name */}
-                  <div className="form-group">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Recipient Name *
-                    </label>
-                    <input
-                      type="text"
-                      name="recipientName"
-                      value={formData.recipientName}
-                      onChange={handleChange}
-                      required
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
+                      {/* Recipient Name - Exportation only */}
+                      <div className="form-group">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Recipient Name *
+                        </label>
+                        <input
+                          type="text"
+                          name="recipientName"
+                          value={formData.recipientName}
+                          onChange={handleChange}
+                          required={formMode === "exportation"}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        />
+                      </div>
 
-                  {/* Contact Number */}
-                  <div className="form-group">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Contact Number
-                    </label>
-                    <input
-                      type="tel"
-                      name="contactNumber"
-                      value={formData.contactNumber}
-                      onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                    />
-                  </div>
+                      {/* Contact Number - Exportation only */}
+                      <div className="form-group">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Contact Number
+                        </label>
+                        <input
+                          type="tel"
+                          name="contactNumber"
+                          value={formData.contactNumber}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                          placeholder="09XXXXXXXXX"
+                          maxLength={11}
+                        />
+                        {formData.contactNumber && (
+                          <p className="text-xs mt-1 text-gray-500">
+                            {!formData.contactNumber.startsWith("09") &&
+                              "Must start with 09"}
+                            {formData.contactNumber.length !== 11 &&
+                              " - Must be 11 digits"}
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Requested By - Breeding only */}
+                      <div className="form-group">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Requested By *
+                        </label>
+                        <input
+                          type="text"
+                          name="requestedBy"
+                          value={formData.requestedBy}
+                          onChange={handleChange}
+                          required={formMode === "breeding"}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        />
+                      </div>
+
+                      {/* Area - Breeding only */}
+                      <div className="form-group">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Area *
+                        </label>
+                        <input
+                          type="text"
+                          name="area"
+                          value={formData.area}
+                          onChange={handleChange}
+                          required={formMode === "breeding"}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {/* Remarks */}
+                {/* Remarks - Common to both modes */}
                 <div className="form-group col-span-1 md:col-span-2 lg:col-span-3">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Remarks
@@ -419,12 +798,26 @@ export default function SeedDistribution() {
                 </div>
 
                 <div className="mt-6 flex justify-end">
-                  <button
-                    type="submit"
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
-                  >
-                    {editingId ? "Update Record" : "Save Record"}
-                  </button>
+                  <div className="flex gap-10">
+                    <ExcelImportExport
+                      columns={
+                        formMode === "exportation"
+                          ? exportationTemplateColumns
+                          : breedingTemplateColumns
+                      }
+                      fileName={`Seed_Distribution_${formMode}`}
+                      onUpload={handleDistributionUpload}
+                      dropdowns={distributionDropdowns}
+                      disabled={!currentUser}
+                    />
+                    <button
+                      type="submit"
+                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
+                    >
+                      {editingId ? "Update Record" : "Save Record"}
+                    </button>
+                  </div>
+
                   {editingId && (
                     <button
                       type="button"
@@ -440,6 +833,8 @@ export default function SeedDistribution() {
                           recipientName: "",
                           contactNumber: "",
                           remarks: "",
+                          requestedBy: "",
+                          area: "",
                         });
                       }}
                       className="ml-2 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
