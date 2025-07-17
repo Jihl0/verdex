@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/Sidebar";
 import DataTable from "@/components/DataTable";
-import DetailModal from "@/components/DetailModal";
 import {
   addSeedDistribution,
   getSeedDistributions,
@@ -14,6 +13,7 @@ import {
 } from "@/lib/db";
 import { useAuth } from "@/context/AuthContext";
 import AuthGuard from "@/utils/AuthGuard";
+import DistributionDetailModal from "@/components/DistributionDetailModal";
 
 export default function SeedDistribution() {
   const { currentUser } = useAuth();
@@ -466,7 +466,7 @@ export default function SeedDistribution() {
           </div>
         </div>
         {showDetailModal && (
-          <DetailModal
+          <DistributionDetailModal
             record={selectedRecord}
             onClose={() => setShowDetailModal(false)}
           />

@@ -503,3 +503,35 @@ export const getDistributionTrends = async () => {
     return [];
   }
 };
+
+export const fetchHarvestByBatchId = async (seedBatchId) => {
+  try {
+    const q = query(
+      collection(db, "seedHarvests"),
+      where("seedBatchId", "==", seedBatchId),
+      limit(1)
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return null;
+    }
+
+    const doc = querySnapshot.docs[0];
+    const data = doc.data();
+    return {
+      id: doc.id,
+      seedBatchId: data.seedBatchId,
+      crop: data.crop,
+      variety: data.variety,
+      classification: data.classification,
+      dateHarvested: data.dateHarvested?.toDate(),
+      germination: data.germination,
+      inQuantity: data.inQuantity,
+      balance: data.balance,
+    };
+  } catch (error) {
+    console.error("Error fetching harvest by batch ID:", error);
+    throw error;
+  }
+};
