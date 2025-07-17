@@ -808,7 +808,7 @@ export default function SeedHarvest() {
               columns={columns}
               data={harvests}
               sortable={true}
-              defaultSort={{ key: "dateHarvested", direction: "descending" }}
+              defaultSort={{ key: "createdAt", direction: "descending" }}
               emptyMessage="No harvest records found"
               rowClassName="hover:bg-gray-50 cursor-pointer"
               headerClassName="bg-gray-50"
