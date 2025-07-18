@@ -488,11 +488,11 @@ export default function SeedDistribution() {
       title: "Recipient/Requester",
       render: (row) => row.recipientName || row.requestedBy || "-",
     },
-    {
-      key: "affiliation",
-      title: "Affiliation/Area",
-      render: (row) => row.affiliation || row.area || "-",
-    },
+    // {
+    //   key: "affiliation",
+    //   title: "Affiliation/Area",
+    //   render: (row) => row.affiliation || row.area || "-",
+    // },
     {
       key: "quantity",
       title: "Quantity (kg)",

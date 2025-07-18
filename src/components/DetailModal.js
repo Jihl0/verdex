@@ -104,7 +104,7 @@ const DetailModal = ({ record, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-600 bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-gray bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div
         ref={modalRef}
         className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-xl"
