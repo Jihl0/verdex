@@ -207,11 +207,18 @@ export const updateSeedHarvest = async (id, harvestData) => {
 
     const currentData = harvestSnap.data();
 
-    // Prepare the update data
+    // Prepare the update data - only include defined values and convert dates
     const updateData = {};
     Object.keys(harvestData).forEach((key) => {
-      if (harvestData[key] !== undefined) {
-        updateData[key] = harvestData[key];
+      if (harvestData[key] !== undefined && harvestData[key] !== null) {
+        // Handle date fields
+        if (key === "datePlanted" || key === "dateHarvested") {
+          updateData[key] = harvestData[key]
+            ? Timestamp.fromDate(new Date(harvestData[key]))
+            : null;
+        } else {
+          updateData[key] = harvestData[key];
+        }
       }
     });
 
@@ -240,7 +247,10 @@ export const updateSeedHarvest = async (id, harvestData) => {
       });
     } else {
       // Just update the harvest record if seedBatchId isn't changing
-      await updateDoc(harvestRef, updateData);
+      // First check if there's anything to update
+      if (Object.keys(updateData).length > 0) {
+        await updateDoc(harvestRef, updateData);
+      }
     }
   } catch (error) {
     console.error("Error updating harvest:", error);
