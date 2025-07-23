@@ -255,7 +255,15 @@ export const addSeedDistribution = async (distributionData) => {
         createdAt: Timestamp.now(),
       };
 
-      // 4. Prepare harvest update
+      // 4. Prepare harvest update with different notes based on mode
+      let note;
+      if (distributionData.mode === "breeding") {
+        note = `Distributed ${quantity}kg for breeding to ${distributionData.requestedBy} to the area "${distributionData.area}"`;
+      } else {
+        // exportation
+        note = `Distributed ${quantity}kg to ${distributionData.recipientName} (${distributionData.affiliation}) for ${distributionData.purpose}`;
+      }
+
       const harvestUpdate = {
         balance: harvestData.balance - quantity,
         logs: [
@@ -263,7 +271,19 @@ export const addSeedDistribution = async (distributionData) => {
           {
             date: Timestamp.now(),
             quantity: -quantity,
-            note: `Distributed ${quantity}kg to ${distributionData.recipientName} (${distributionData.affiliation}) for ${distributionData.purpose}`,
+            note: note,
+            mode: distributionData.mode,
+            purpose: distributionData.purpose,
+            ...(distributionData.mode === "breeding"
+              ? {
+                  requestedBy: distributionData.requestedBy,
+                  area: distributionData.area,
+                }
+              : {
+                  recipientName: distributionData.recipientName,
+                  affiliation: distributionData.affiliation,
+                  contactNumber: distributionData.contactNumber,
+                }),
             distributionId: distributionRef.id,
           },
         ],
