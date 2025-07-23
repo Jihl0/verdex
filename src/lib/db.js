@@ -14,6 +14,7 @@ import {
   increment,
   Timestamp,
   runTransaction,
+  writeBatch,
 } from "firebase/firestore";
 import { app } from "./firebase";
 
@@ -196,15 +197,51 @@ export const getSeedHarvests = async () => {
 
 export const updateSeedHarvest = async (id, harvestData) => {
   try {
-    // Create a clean data object without undefined values
-    const cleanData = {};
+    // First get the current harvest data
+    const harvestRef = doc(db, "seedHarvests", id);
+    const harvestSnap = await getDoc(harvestRef);
+
+    if (!harvestSnap.exists()) {
+      throw new Error("Harvest record not found");
+    }
+
+    const currentData = harvestSnap.data();
+
+    // Prepare the update data
+    const updateData = {};
     Object.keys(harvestData).forEach((key) => {
       if (harvestData[key] !== undefined) {
-        cleanData[key] = harvestData[key];
+        updateData[key] = harvestData[key];
       }
     });
 
-    await updateDoc(doc(db, "seedHarvests", id), cleanData);
+    // If seedBatchId is being updated, we need to update all related distributions
+    if (
+      updateData.seedBatchId &&
+      updateData.seedBatchId !== currentData.seedBatchId
+    ) {
+      await runTransaction(db, async (transaction) => {
+        // Update the harvest record
+        transaction.update(harvestRef, updateData);
+
+        // Find all distributions linked to this harvest
+        const distributionsQuery = query(
+          collection(db, "seedDistributions"),
+          where("seedBatchId", "==", currentData.seedBatchId)
+        );
+        const distributionsSnap = await getDocs(distributionsQuery);
+
+        // Update each distribution with the new seedBatchId
+        distributionsSnap.forEach((distDoc) => {
+          transaction.update(distDoc.ref, {
+            seedBatchId: updateData.seedBatchId,
+          });
+        });
+      });
+    } else {
+      // Just update the harvest record if seedBatchId isn't changing
+      await updateDoc(harvestRef, updateData);
+    }
   } catch (error) {
     console.error("Error updating harvest:", error);
     throw error;
@@ -213,9 +250,42 @@ export const updateSeedHarvest = async (id, harvestData) => {
 
 export const deleteSeedHarvest = async (id) => {
   try {
-    const docRef = doc(db, "seedHarvests", id);
-    await deleteDoc(docRef);
+    return await runTransaction(db, async (transaction) => {
+      // 1. Get the harvest record first
+      const harvestRef = doc(db, "seedHarvests", id);
+      const harvestSnap = await transaction.get(harvestRef);
+
+      if (!harvestSnap.exists()) {
+        throw new Error("Harvest record not found");
+      }
+
+      const harvestData = harvestSnap.data();
+      const seedBatchId = harvestData.seedBatchId;
+
+      // 2. Find all distributions linked to this harvest through logs
+      const distributionsQuery = query(
+        collection(db, "seedDistributions"),
+        where("seedBatchId", "==", seedBatchId)
+      );
+      const distributionsSnap = await getDocs(distributionsQuery);
+
+      // 3. Delete all linked distributions
+      const batch = writeBatch(db);
+      distributionsSnap.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+
+      // 4. Execute the batch delete and then delete the harvest
+      await batch.commit();
+      await transaction.delete(harvestRef);
+
+      return {
+        deletedHarvestId: id,
+        deletedDistributionIds: distributionsSnap.docs.map((d) => d.id),
+      };
+    });
   } catch (error) {
+    console.error("Error deleting seed harvest:", error);
     throw error;
   }
 };
@@ -255,17 +325,18 @@ export const addSeedDistribution = async (distributionData) => {
         createdAt: Timestamp.now(),
       };
 
-      // 4. Prepare harvest update with different notes based on mode
+      // 4. Prepare harvest update with log
       let note;
       if (distributionData.mode === "breeding") {
-        note = `Distributed ${quantity}kg for breeding to ${distributionData.requestedBy} to the area "${distributionData.area}"`;
+        note = `Distributed ${quantity}kg for breeding to ${distributionData.requestedBy} (Area: ${distributionData.area})`;
       } else {
-        // exportation
         note = `Distributed ${quantity}kg to ${distributionData.recipientName} (${distributionData.affiliation}) for ${distributionData.purpose}`;
       }
 
       const harvestUpdate = {
         balance: harvestData.balance - quantity,
+        outQuantity: (harvestData.outQuantity || 0) + quantity,
+        status: harvestData.balance - quantity > 0 ? "Active" : "Depleted",
         logs: [
           ...(harvestData.logs || []),
           {
@@ -274,16 +345,11 @@ export const addSeedDistribution = async (distributionData) => {
             note: note,
             mode: distributionData.mode,
             purpose: distributionData.purpose,
-            ...(distributionData.mode === "breeding"
-              ? {
-                  requestedBy: distributionData.requestedBy,
-                  area: distributionData.area,
-                }
-              : {
-                  recipientName: distributionData.recipientName,
-                  affiliation: distributionData.affiliation,
-                  contactNumber: distributionData.contactNumber,
-                }),
+            requestedBy: distributionData.requestedBy,
+            area: distributionData.area,
+            recipientName: distributionData.recipientName,
+            affiliation: distributionData.affiliation,
+            contactNumber: distributionData.contactNumber,
             distributionId: distributionRef.id,
           },
         ],
@@ -339,65 +405,170 @@ export const getSeedDistributions = async () => {
 
 export const updateSeedDistribution = async (id, distributionData) => {
   try {
-    const docRef = doc(db, "seedDistributions", id);
-    await updateDoc(docRef, distributionData);
+    return await runTransaction(db, async (transaction) => {
+      // 1. Get the current distribution record
+      const distRef = doc(db, "seedDistributions", id);
+      const distSnap = await transaction.get(distRef);
+
+      if (!distSnap.exists()) {
+        throw new Error("Distribution record not found");
+      }
+
+      const currentDist = distSnap.data();
+      const seedBatchId = currentDist.seedBatchId;
+
+      // 2. Get the associated harvest record
+      const harvestQuery = query(
+        collection(db, "seedHarvests"),
+        where("seedBatchId", "==", seedBatchId)
+      );
+      const harvestSnap = await getDocs(harvestQuery);
+
+      if (harvestSnap.empty) {
+        throw new Error(`No harvest found with batch ID: ${seedBatchId}`);
+      }
+
+      const harvestDoc = harvestSnap.docs[0];
+      const harvestData = harvestDoc.data();
+
+      // 3. Find the log entry in the harvest that corresponds to this distribution
+      const logIndex = harvestData.logs?.findIndex(
+        (log) => log.distributionId === id
+      );
+
+      if (logIndex === -1 || logIndex === undefined) {
+        throw new Error("Corresponding log entry not found in harvest record");
+      }
+
+      // 4. Calculate quantity difference if quantity is being updated
+      const oldQuantity = currentDist.quantity;
+      const newQuantity = distributionData.quantity
+        ? Number(distributionData.quantity)
+        : oldQuantity;
+
+      if (isNaN(newQuantity)) {
+        throw new Error("Invalid quantity");
+      }
+
+      const quantityDiff = newQuantity - oldQuantity;
+
+      // 5. Check if there's enough balance if increasing quantity
+      if (quantityDiff > 0 && harvestData.balance < quantityDiff) {
+        throw new Error("Insufficient quantity available for update");
+      }
+
+      // 6. Prepare updates
+      const updatedLog = {
+        ...harvestData.logs[logIndex],
+        quantity: -newQuantity,
+      };
+
+      // Update log note if relevant fields changed
+      if (distributionData.mode === "breeding") {
+        if (distributionData.requestedBy) {
+          updatedLog.requestedBy = distributionData.requestedBy;
+          updatedLog.note = `Distributed ${newQuantity}kg for breeding to ${
+            distributionData.requestedBy
+          } (Area: ${distributionData.area || updatedLog.area})`;
+        }
+        if (distributionData.area) {
+          updatedLog.area = distributionData.area;
+        }
+      } else {
+        if (distributionData.recipientName || distributionData.affiliation) {
+          updatedLog.recipientName =
+            distributionData.recipientName || updatedLog.recipientName;
+          updatedLog.affiliation =
+            distributionData.affiliation || updatedLog.affiliation;
+          updatedLog.note = `Distributed ${newQuantity}kg to ${
+            updatedLog.recipientName
+          } (${updatedLog.affiliation}) for ${
+            distributionData.purpose || updatedLog.purpose
+          }`;
+        }
+      }
+
+      if (distributionData.purpose) {
+        updatedLog.purpose = distributionData.purpose;
+      }
+
+      const updatedLogs = [...harvestData.logs];
+      updatedLogs[logIndex] = updatedLog;
+
+      const harvestUpdate = {
+        balance: harvestData.balance - quantityDiff,
+        outQuantity: (harvestData.outQuantity || 0) + quantityDiff,
+        status: harvestData.balance - quantityDiff > 0 ? "Active" : "Depleted",
+        logs: updatedLogs,
+      };
+
+      // 7. Update both records in a transaction
+      transaction.update(distRef, {
+        ...distributionData,
+        quantity: newQuantity,
+      });
+      transaction.update(harvestDoc.ref, harvestUpdate);
+
+      return id;
+    });
   } catch (error) {
+    console.error("Error updating distribution:", error);
     throw error;
   }
 };
 
 export const deleteSeedDistribution = async (distributionId) => {
   try {
-    // 1. Get the distribution record first
-    const distributionRef = doc(db, "seedDistributions", distributionId);
-    const distributionDoc = await getDoc(distributionRef);
+    return await runTransaction(db, async (transaction) => {
+      // 1. Get the distribution record first
+      const distributionRef = doc(db, "seedDistributions", distributionId);
+      const distributionSnap = await transaction.get(distributionRef);
 
-    if (!distributionDoc.exists()) {
-      throw new Error("Distribution record not found");
-    }
+      if (!distributionSnap.exists()) {
+        throw new Error("Distribution record not found");
+      }
 
-    const distributionData = distributionDoc.data();
-    const { seedBatchId, quantity } = distributionData;
+      const distributionData = distributionSnap.data();
+      const { seedBatchId, quantity } = distributionData;
 
-    // 2. Find the corresponding harvest record
-    const harvestQuery = query(
-      collection(db, "seedHarvests"),
-      where("seedBatchId", "==", seedBatchId)
-    );
-    const harvestSnapshot = await getDocs(harvestQuery);
+      // 2. Find the corresponding harvest record
+      const harvestQuery = query(
+        collection(db, "seedHarvests"),
+        where("seedBatchId", "==", seedBatchId)
+      );
+      const harvestSnap = await getDocs(harvestQuery);
 
-    if (harvestSnapshot.empty) {
-      throw new Error(`No harvest found with batch ID: ${seedBatchId}`);
-    }
+      if (harvestSnap.empty) {
+        throw new Error(`No harvest found with batch ID: ${seedBatchId}`);
+      }
 
-    const harvestDoc = harvestSnapshot.docs[0];
-    const harvestData = harvestDoc.data();
+      const harvestDoc = harvestSnap.docs[0];
+      const harvestData = harvestDoc.data();
 
-    // 3. Prepare updated remarks (remove the distribution entry)
-    const distributionDate =
-      distributionData.date instanceof Timestamp
-        ? distributionData.date.toDate().toLocaleDateString()
-        : new Date(distributionData.date).toLocaleDateString();
+      // 3. Remove the distribution log entry
+      const updatedLogs =
+        harvestData.logs?.filter(
+          (log) => log.distributionId !== distributionId
+        ) || [];
 
-    const remarkToRemove = `\n[${distributionDate}] Distributed ${quantity}kg to ${distributionData.affiliation} (${distributionData.recipientName}) for ${distributionData.purpose}.`;
+      // 4. Update the harvest record (add back the quantity)
+      const harvestUpdate = {
+        balance: (harvestData.balance || 0) + quantity,
+        outQuantity: (harvestData.outQuantity || 0) - quantity,
+        status:
+          (harvestData.balance || 0) + quantity > 0 ? "Active" : "Depleted",
+        logs: updatedLogs,
+      };
 
-    const updatedRemarks = harvestData.remarks
-      ? harvestData.remarks.replace(remarkToRemove, "").trim()
-      : "";
+      // 5. Perform the updates
+      transaction.update(harvestDoc.ref, harvestUpdate);
+      transaction.delete(distributionRef);
 
-    // 4. Update the harvest record (add back the quantity)
-    await updateDoc(doc(db, "seedHarvests", harvestDoc.id), {
-      outQuantity: increment(-quantity), // Subtract from outQuantity
-      balance: increment(quantity), // Add back to balance
-      remarks: updatedRemarks,
-      status:
-        Number(harvestData.balance) + Number(quantity) > 0
-          ? "Active"
-          : "Depleted",
+      return {
+        deletedDistributionId: distributionId,
+        updatedHarvestId: harvestDoc.id,
+      };
     });
-
-    // 5. Finally delete the distribution record
-    await deleteDoc(distributionRef);
   } catch (error) {
     console.error("Error deleting distribution:", error);
     throw error;
@@ -406,7 +577,6 @@ export const deleteSeedDistribution = async (distributionId) => {
 
 export const getCropHarvestStats = async () => {
   try {
-    // Use the modular query syntax
     const q = query(collection(db, "seedHarvests"));
     const querySnapshot = await getDocs(q);
 
